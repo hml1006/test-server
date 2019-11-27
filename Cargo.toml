@@ -1,0 +1,17 @@
+[package]
+name = "test-server"
+version = "0.1.0"
+authors = ["hml1006 <hml1006@qq.com>"]
+edition = "2018"
+description = "It's a http/https test server, and can offer statistical metrics in termimal."
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = "2.33.0"
+actix-service = "0.4.2"
+actix-web = "1.0.9"
+netstat = "0.7.0"
+chrono = "0.4"
+lazy_static = "1.4.0"
+futures = "0.1.29"
