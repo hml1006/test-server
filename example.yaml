@@ -1,0 +1,13 @@
+# configure request
+get:
+  -
+    url: /
+    file: ~/code/test-server/index.html
+  -
+    url: /check
+    file: ~/code/test-server/check.json
+
+post:
+  -
+    url: /login
+    file: ~/code/test-server/logon.json
