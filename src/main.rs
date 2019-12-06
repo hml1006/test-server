@@ -1,28 +1,51 @@
 #[macro_use]
 extern crate clap;
-
 #[macro_use]
 extern crate lazy_static;
-
+extern crate hyper;
+extern crate futures;
 extern crate yaml_rust;
-use yaml_rust::{YamlLoader, Yaml};
-use std::fs;
-mod route;
+extern crate http;
+
 mod statistic;
-mod middleware;
 mod types;
 
 use std::error::Error;
-use std::sync::Mutex;
-use std::net::{IpAddr, SocketAddr};
-use actix_web::{App, HttpServer};
-use shellexpand;
-
+use std::net::IpAddr;
+use std::fs;
 use std::thread;
 use std::time::Duration;
+use std::collections::HashMap;
+use std::sync::Mutex;
+use std::sync::RwLock;
+use std::vec::Vec;
+use std::boxed::Box;
 
-use route::{init_route_by_yaml};
+extern crate tokio_fs;
+extern crate tokio_io;
+
+use yaml_rust::{YamlLoader, Yaml};
+
+use shellexpand;
+
+use futures::{future, Future};
+use hyper::{Body, Method, Request, Response, Server, StatusCode};
+use hyper::service::service_fn;
+
 use statistic::show_statistics;
+use yaml_rust::yaml::Yaml::{Hash, Array};
+use std::str::FromStr;
+use std::path::Path;
+use crate::types::mime_types::MimeType;
+use crate::types::route::{Content, RouteInfo};
+use std::fs::File;
+use std::io::Read;
+use http::{HeaderMap, HeaderValue};
+use http::header::HeaderName;
+use hyper::http::header;
+
+type GenericError = Box<dyn std::error::Error + Send + Sync>;
+type ResponseFuture = Box<dyn Future<Item=Response<Body>, Error=GenericError> + Send>;
 
 /// version
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -35,31 +58,113 @@ const AUTHOR: &'static str = env!("CARGO_PKG_AUTHORS");
 // keep_alive timeout: seconds
 const KEEPALIVE: usize = 75;
 
-const DEFAULT_STATS_REFRESH_INTERVAL: u64 = 1;
+// keys
+const KEY_IP: &'static str = "ip";
+const KEY_PORT: &'static str = "port";
+const KEY_INTERNAL: &'static str = "internal";
 
 lazy_static! {
-    // listen ip
-    static ref LISTEN_IP: Mutex<IpAddr> = Mutex::new("0.0.0.0".parse::<IpAddr>().unwrap());
-    // listen port
-    static ref LISTEN_PORT: Mutex<u16> = Mutex::new(0);
-    // statistics info refresh interval, s
-    static ref STATS_REFRESH_INTERVAL: Mutex<u64> = Mutex::new(DEFAULT_STATS_REFRESH_INTERVAL);
+    //parameters from command line
+    static ref CONFIGURATION: Mutex<HashMap<&'static str, String>> = Mutex::new(HashMap::new());
     // yaml configuration
     static ref YAML_CONFIG: Mutex<Vec<Yaml>> = Mutex::new(Vec::new());
+    // routes configuration
+    static ref ROUTES: RwLock<HashMap<String, RouteInfo>> = RwLock::new(HashMap::new());
+    // file cache
+    static ref FILE_CACHE: RwLock<HashMap<String, Arc<*const u8>>> = RwLock::new(HashMap::new());
+}
+// if a file size small then MAX_FILE_CACHE_LENGTH, then this file will be cached
+const MAX_FILE_CACHE_LENGTH: u64 = 512 * 1024;
+
+// default statistics information refresh time
+const DEFAULT_STATS_REFRESH_INTERVAL: u64 = 1;
+
+
+fn main() {
+    let ret = parse_args();
+    if let Err(_) = ret {
+        println!("init failed!");
+        return;
+    }
+
+    // init route information
+    if YAML_CONFIG.lock().unwrap().len() > 0 {
+        let yaml = YAML_CONFIG.lock().unwrap();
+        let doc = yaml.get(0);
+        if !doc.is_none() {
+            init_route_by_yaml(doc.unwrap());
+        }
+    }
+
+    let addr = format!("{}:{}", CONFIGURATION.lock().unwrap().get(KEY_IP).unwrap(), CONFIGURATION.lock().unwrap().get(KEY_PORT).unwrap());
+    println!("listening on {}", addr);
+    let addr = addr.parse().unwrap();
+    // bind address
+    let server = Server::bind(&addr)
+        .serve(|| service_fn(response))
+        .map_err(|e| eprintln!("server error: {}", e));
+
+    hyper::rt::run(server);
+
+    create_stat_thread();
+}
+
+fn response(req: Request<Body>) -> ResponseFuture {
+    let url = req.uri().path().to_string();
+    match ROUTES.read().unwrap().get(&url) {
+        Some(route) => {
+            if route.method == req.method() {
+                let mut builder = Response::builder();
+                builder.status(route.status_code);
+                builder.header(header::CONTENT_TYPE, route.mime_type.to_string());
+                for (key, value) in route.headers.iter() {
+                    builder.header(key, value);
+                }
+                match &route.body {
+                    Content::Cache => {
+                        match FILE_CACHE.read().unwrap().get(&url) {
+                            Some(content) => {
+                                Box::new(future::ok(builder.body(Body::from(*content.as_ref())).unwrap()))
+                            },
+                            None => {
+                                Box::new(future::ok(builder.status(StatusCode::NOT_FOUND).body(Body::from("not found")).unwrap()))
+                            }
+                        }
+                    },
+                    Content::Content(content) => {
+                        Box::new(future::ok(builder.body(Body::from(content.clone())).unwrap()))
+                    },
+                    Content::File(file) => {
+                        Box::new(future::ok(builder.body(Body::from(file.clone())).unwrap()))
+                    }
+                }
+            } else {
+                Box::new(future::ok(Response::builder().status(StatusCode::METHOD_NOT_ALLOWED)
+                    .body(Body::from("method for this request is not implemented"))
+                    .unwrap()))
+            }
+        }
+        None => {
+            Box::new(future::ok(Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::empty())
+                .unwrap()))
+        }
+    }
 }
 
 /// create statistics thread
-fn create_statistics_thread() {
+fn create_stat_thread() {
     thread::spawn(move || {
         loop {
-            thread::sleep(Duration::new(*STATS_REFRESH_INTERVAL.lock().unwrap(), 0));
-            show_statistics(*LISTEN_PORT.lock().unwrap());
+            thread::sleep(Duration::new(CONFIGURATION.lock().unwrap().get(KEY_INTERNAL).unwrap().parse().unwrap(), 0));
+            show_statistics();
         }
     });
 }
 
 /// init configuration
-fn init_cfg() -> std::result::Result<(), Box<dyn Error>> {
+fn parse_args() -> std::result::Result<(), Box<dyn Error>> {
     // build arguments parser
     let matches = clap_app!(myapp =>
         (name: NAME)
@@ -73,31 +178,35 @@ fn init_cfg() -> std::result::Result<(), Box<dyn Error>> {
     ).get_matches();
 
     // parse or set default ipaddress
-    *LISTEN_IP.lock().unwrap() = match matches.value_of("host").unwrap_or("0.0.0.0").parse::<IpAddr>() {
-        Ok(ip) => ip,
+    let ip_str = matches.value_of("host").unwrap_or("0.0.0.0");
+    match ip_str.parse::<IpAddr>() {
+        Ok(_) => {}
         Err(e) => {
             println!("parse ip failed: {:?}", e);
             return Err(Box::new(e));
         }
     };
+    CONFIGURATION.lock().unwrap().insert(KEY_IP, ip_str.to_string());
 
     // parse or set defalut port number
-    *LISTEN_PORT.lock().unwrap() = match matches.value_of("port").unwrap_or("8088").parse::<u16>() {
+    let port = match matches.value_of("port").unwrap_or("8088").parse::<u16>() {
         Ok(port) => port,
         Err(e) => {
             println!("parse port failed: {:?}", e);
             return Err(Box::new(e));
         }
     };
+    CONFIGURATION.lock().unwrap().insert(KEY_PORT, port.to_string());
 
     // parse statistics information interval
-    *STATS_REFRESH_INTERVAL.lock().unwrap() = match matches.value_of("interval").unwrap_or(&DEFAULT_STATS_REFRESH_INTERVAL.to_string()).parse::<u64>() {
+    let interval = match matches.value_of("interval").unwrap_or(&DEFAULT_STATS_REFRESH_INTERVAL.to_string()).parse::<u64>() {
         Ok(interval) => interval,
         Err(e) => {
             println!("parse interval failed: {:?}", e);
             return Err(Box::new(e));
         }
     };
+    CONFIGURATION.lock().unwrap().insert(KEY_INTERNAL, interval.to_string());
 
     // get yaml configuration
     let yaml = matches.value_of("yaml");
@@ -129,7 +238,7 @@ fn init_cfg() -> std::result::Result<(), Box<dyn Error>> {
 }
 
 // parse yaml
-fn parse_yaml(yaml: &str) -> Result<(), Box<dyn Error>>{
+fn parse_yaml(yaml: &str) -> Result<(), Box<dyn Error>> {
     // parse yaml string
     let docs = match YamlLoader::load_from_str(yaml) {
         Ok(yaml) => yaml,
@@ -143,48 +252,258 @@ fn parse_yaml(yaml: &str) -> Result<(), Box<dyn Error>>{
     Ok(())
 }
 
-fn main() {
-    let init_ret = init_cfg();
-    if let Err(_) = init_ret {
-        println!("init failed!");
-        return;
+fn init_route_by_yaml(yaml: &Yaml) {
+    let yaml = match yaml {
+        Hash(yaml) => yaml,
+        _ => return
+    };
+
+    for (key, value) in yaml.iter() {
+        // get array
+        let value = match value {
+            Array(yaml) => yaml,
+            _ => {
+                println!("the method's elements should be an array");
+                continue;
+            }
+        };
+
+        //  build methods routes
+        let method = match Method::from_str(key.as_str().unwrap_or("")) {
+            Ok(method) => method,
+            Err(e) => {
+                println!("method error: {}", e);
+                continue;
+            }
+        };
+
+        // initialize keys
+        let url_key = yaml_rust::Yaml::String("url".to_string());
+        let file_key = yaml_rust::Yaml::String("file".to_string());
+        let headers_key = yaml_rust::Yaml::String("headers".to_string());
+//        let status_code_key = yaml_rust::Yaml::String("status_code".to_string());
+
+        // filter from array that has url filed.
+        let value = value.iter().filter(|element| {
+            match element {
+                Hash(element) => {
+                    element.contains_key(&url_key)
+                }
+                _ => {
+                    println!("request configuration should be hash type: {:?}", element);
+                    false
+                }
+            }
+        }).collect::<Vec<&Yaml>>();
+
+        // traverse all requests configuration
+        for req in value.into_iter() {
+            match req {
+                Hash(element) => {
+                    // get url
+                    let url = element.get(&url_key).unwrap();
+                    let url = match url {
+                        yaml_rust::yaml::Yaml::String(url) => url.clone(),
+                        _ => {
+                            println!("url not string: {:?}", url);
+                            continue;
+                        }
+                    };
+
+                    // mime type, body and status code
+                    let (mime_type, body, status_code) = match parse_mime_and_body(&req, &file_key, url.clone()) {
+                        Ok(value) => value,
+                        Err(e) => {
+                            println!("error occurred while parsing mime and body: {}", e);
+                            continue;
+                        }
+                    };
+
+                    // parse headers
+                    let headers = element.get(&headers_key);
+                    let headers: HeaderMap<HeaderValue> = if headers.is_none() {
+                        Default::default()
+                    } else {
+                        parse_headers(headers.unwrap())
+                    };
+
+                    // add route
+                    ROUTES.write().unwrap().insert(url.clone(), RouteInfo {
+                        url,
+                        method: method.clone(),
+                        status_code,
+                        mime_type,
+                        headers,
+                        body,
+                    });
+                }
+                _ => {}
+            }
+        }
     }
+}
 
-    if YAML_CONFIG.lock().unwrap().len() == 0 {
-        println!("yaml configuration empty!");
-        return;
-    }
-
-    // init route information
-    let doc = &(*YAML_CONFIG.lock().unwrap())[0];
-    init_route_by_yaml(doc);
-
-    // bind address
-    let serv = HttpServer::new(|| {
-        let app = App::new().wrap(middleware::ReqStat);
-//        app.route();
-        return app
-    })
-        .keep_alive(KEEPALIVE)
-        .bind(SocketAddr::new(*LISTEN_IP.lock().unwrap(), *LISTEN_PORT.lock().unwrap()));
-
-    let serv = match serv {
-        Ok(serv) => serv,
-        Err(e) => {
-            println!("bind failed: {}", e);
-            return;
+fn parse_headers(yaml: &Yaml) -> HeaderMap {
+    let headers = match yaml {
+        Hash(headers) => headers,
+        _ => {
+            println!("header type error: {:?}", yaml);
+            return Default::default();
         }
     };
 
-    println!("listening on {}:{}", *LISTEN_IP.lock().unwrap(), *LISTEN_PORT.lock().unwrap());
+    let mut header_map = HeaderMap::new();
 
-    create_statistics_thread();
-
-    // run http server
-    match serv.run() {
-        Err(e) => {
-            println!("run server failed: {}", e);
+    for (key, value) in headers.iter() {
+        match key {
+            yaml_rust::yaml::Yaml::String(key) => {
+                match value {
+                    yaml_rust::yaml::Yaml::String(value) => {
+                        let key = match HeaderName::from_str(key.as_str()) {
+                            Ok(key) => key,
+                            Err(e) => {
+                                println!("error header name: {}", e);
+                                continue;
+                            }
+                        };
+                        let value = match HeaderValue::from_str(value.as_str()) {
+                            Ok(value) => value,
+                            Err(e) => {
+                                println!("error header value: {}", e);
+                                continue;
+                            }
+                        };
+                        header_map.insert(key, value);
+                    }
+                    _ => {
+                        println!("value type error: {:?}", value);
+                        continue;
+                    }
+                }
+            }
+            _ => {
+                println!("key type error: {:?}", key);
+                continue;
+            }
         }
-        _ => ()
     }
+
+    header_map
+}
+
+fn parse_mime_and_body(yaml: &Yaml, file_key: &yaml_rust::yaml::Yaml, url: String) -> Result<(MimeType, Content, StatusCode), Box<dyn Error>> {
+    let element = match yaml {
+        Hash(yaml) => yaml,
+        _ => {
+            return Err(String::from("yaml type is not hash").into());
+        }
+    };
+    // get file path and convert to body
+    let mime_type = MimeType::ApplicationOctetStream;
+
+    // file filed not found, return
+    let file = element.get(file_key);
+    if file.is_none() {
+        return Ok((MimeType::TextPlain, Content::Content("not found file path field".to_string()), StatusCode::NOT_FOUND));
+    };
+
+    match file.unwrap() {
+        yaml_rust::yaml::Yaml::String(path) => {
+            let path = path.to_string();
+            let full_path = shellexpand::full(&path);
+            if full_path.is_ok() {
+                let full_path = full_path.unwrap().to_string();
+                let abs_path = Path::new(&full_path);
+                // not file or no permmision to access, return
+                if !abs_path.is_file() {
+                    println!("file error: {:?}", abs_path.as_os_str());
+                    return Ok((MimeType::TextPlain, Content::Content(format!("not a file: {:?}", abs_path).to_string()), StatusCode::INTERNAL_SERVER_ERROR));
+                }
+                // check file extension
+                let extension = abs_path.extension();
+                if extension.is_none() {
+                    return Ok((mime_type, Content::File(full_path), StatusCode::OK));
+                } else {
+                    match extension.unwrap().to_str() {
+                        Some(extension) => {
+                            let mime_type = MimeType::from_str(extension).unwrap_or(MimeType::ApplicationOctetStream);
+                            if mime_type.is_text() {
+                                let ref meta = fs::metadata(abs_path);
+                                if meta.is_err() {
+                                    println!("get file metadata failed: {:?}", meta.as_ref().err().unwrap());
+                                    return Ok((MimeType::TextPlain, Content::Content(format!("get file metadata failed: {:?} => {:?}", abs_path, meta.as_ref().err().unwrap()).to_string()), StatusCode::INTERNAL_SERVER_ERROR));
+                                }
+                                let file_length = meta.as_ref().unwrap().len();
+                                if file_length <= MAX_FILE_CACHE_LENGTH {
+                                    let file = File::open(&full_path);
+                                    let mut buf: Box<Vec<u8>> = Box::new(Vec::new());
+                                    let mut file = match file {
+                                        Ok(file) => file,
+                                        Err(e) => {
+                                            println!("open file failed: {:?}", e);
+                                            return Ok((MimeType::TextPlain, Content::Content(format!("open file failed: {:?} => {:?}", abs_path, e).to_string()), StatusCode::INTERNAL_SERVER_ERROR));
+                                        }
+                                    };
+                                    match file.read_to_end(buf.as_mut()) {
+                                        Ok(_) => {
+                                            FILE_CACHE.write().unwrap().insert(url, buf);
+                                            return Ok((mime_type, Content::Cache, StatusCode::OK));
+                                        }
+                                        Err(e) => {
+                                            println!("read file failed: {:?} => {:?}", e, abs_path);
+                                            return Ok((MimeType::TextPlain, Content::Content(format!("read file failed: {:?} => {:?}", e, abs_path).to_string()), StatusCode::INTERNAL_SERVER_ERROR));
+                                        }
+                                    }
+                                } else {
+                                    return Ok((mime_type, Content::File(abs_path.to_str().unwrap().to_string()), StatusCode::OK));
+                                }
+                            } else {
+                                return Ok((MimeType::ApplicationOctetStream, Content::File(full_path), StatusCode::OK));
+                            }
+                        }
+                        _ => {
+                            Err(String::from(format!("extension to string failed: {:?}", abs_path)).into())
+                        }
+                    }
+                }
+            } else {
+                Err(String::from(format!("path expend failed: {:?}", path)).into())
+            }
+        }
+        _ => {
+            Err(String::from(format!("file path type error: {:?}", file)).into())
+        }
+    }
+}
+
+#[allow(dead_code)]
+fn parse_status_code(yaml: &Yaml, status_code_key: &yaml_rust::yaml::Yaml) -> StatusCode {
+    let element = match yaml {
+        Hash(yaml) => yaml,
+        _ => {
+            panic!("yaml type is not hash: {:?}", yaml);
+        }
+    };
+    element.get(status_code_key).map_or_else(|| StatusCode::from_u16(200).unwrap(), |value| {
+        let status = match value {
+            yaml_rust::yaml::Yaml::String(code) => {
+                match StatusCode::from_str(code.as_str()) {
+                    Ok(status) => Some(status),
+                    Err(e) => {
+                        println!("parse status code failed: {}", e);
+                        None
+                    }
+                }
+            }
+            _ => {
+                println!("unknown status code: {:?}", value);
+                None
+            }
+        };
+        if status.is_none() {
+            println!("use default status code 200");
+            return StatusCode::from_u16(200).unwrap();
+        }
+        status.unwrap()
+    })
 }

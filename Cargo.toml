@@ -9,11 +9,12 @@ description = "It's a http/https test server, and can offer statistical metrics 
 
 [dependencies]
 clap = "2.33.0"
-actix-service = "0.4.2"
-actix-web = "1.0.9"
-netstat = "0.7.0"
+hyper = "*"
+http = "*"
+futures = "*"
 chrono = "0.4"
 lazy_static = "1.4.0"
-futures = "0.1.29"
 yaml-rust = "0.4.3"
 shellexpand = "1.0.0"
+tokio-fs = "*"
+tokio-io = "*"

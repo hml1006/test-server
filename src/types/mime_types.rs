@@ -107,6 +107,19 @@ pub enum MimeType {
     VideoAvi,
 }
 
+impl MimeType {
+    pub(crate) fn is_text(&self) -> bool {
+        match self {
+            MimeType::TextPlain|MimeType::TextXml|MimeType::TextHtml|MimeType::TextCss|MimeType::TextMathml|
+            MimeType::TextJad |MimeType::TextWml|MimeType::TextHtc => true,
+
+            MimeType::ApplicationJavaScript|MimeType::ApplicationXhtml|MimeType::ApplicationRss|MimeType::ApplicationJson => true,
+
+            _ => false
+        }
+    }
+}
+
 impl FromStr for MimeType {
     type Err = MimeTypeParseError;
 
@@ -131,6 +144,9 @@ impl FromStr for MimeType {
             "ico" => Ok(MimeType::ImageXIcon),
             "jng" => Ok(MimeType::ImageXJng),
             "bmp" => Ok(MimeType::ImageXMsBmp),
+
+            "woff" => Ok(MimeType::FontWoff),
+            "woff2" => Ok(MimeType::FontWoff2),
 
             "js" => Ok(MimeType::ApplicationJavaScript),
             "atom" => Ok(MimeType::ApplicationAtom),
@@ -174,7 +190,7 @@ impl FromStr for MimeType {
             "xhtml" => Ok(MimeType::ApplicationXhtml),
             "xspf" => Ok(MimeType::ApplicationXspf),
             "zip" => Ok(MimeType::ApplicationZip),
-            "bin"|"exe"|"dll"|"deb"|"dmg"|"iso"|"img"|"msi"|"msp"|"msm" => Ok(MimeType::ApplicationOctetStream),
+            "bin"|"exe"|"dll"|"deb"|"dmg"|"iso"|"img"|"msi"|"msp"|"msm"|"gz" => Ok(MimeType::ApplicationOctetStream),
             "mid"|"midi"|"kar" => Ok(MimeType::AudioMidi),
             "mp3" => Ok(MimeType::AudioMpeg),
             "ogg" => Ok(MimeType::AudioOgg),
@@ -263,7 +279,7 @@ impl ToString for MimeType {
             MimeType::ApplicationTcl => "application/x-tcl",
             MimeType::ApplicationCert => "application/x-x509-ca-cert",
             MimeType::ApplicationXpi => "application/x-xpinstall",
-            MimeType::ApplicationXpi => "application/xhtml+xml",
+            MimeType::ApplicationXhtml => "application/xhtml+xml",
             MimeType::ApplicationXspf => "application/xspf+xml",
             MimeType::ApplicationZip => "application/zip",
             MimeType::ApplicationOctetStream => "application/octet-stream",
@@ -286,7 +302,7 @@ impl ToString for MimeType {
             MimeType::VideoWmv => "video/x-ms-wmv",
             MimeType::VideoAvi => "video/x-msvideo",
 
-            _ => "unknown"
+            _ => "application/octet-stream"
         }.parse().unwrap()
     }
 }

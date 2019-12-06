@@ -1,7 +1,3 @@
-extern crate netstat;
-
-use netstat::*;
-use std::process;
 use chrono::prelude::*;
 use std::sync::Mutex;
 
@@ -92,84 +88,16 @@ pub fn inc_503_resp_num() {
     *RESP_503_NUM.lock().unwrap() += 1;
 }
 
-/// get all connections by listening port
-fn get_connections_info_by_listen_port(listen_port: u16) -> Result<Vec<SocketInfo>, Error> {
-    let af_flags = AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6;
-    let proto_flags = ProtocolFlags::TCP;
-    let sockets_info = get_sockets_info(af_flags, proto_flags)?;
-    let process_id = process::id();
-    let sockets_info = sockets_info.into_iter()
-        .filter(|si| {
-            match &si.protocol_socket_info {
-                ProtocolSocketInfo::Tcp(tcp_si) => {
-                    tcp_si.local_port == listen_port && si.associated_pids.contains(&process_id)
-                }
-                _ => false
-            }
-        })
-        .collect::<Vec<SocketInfo>>();
-    Ok(sockets_info)
-}
 
 // show statistics
-pub fn show_statistics(listen_port: u16) {
-    let sockets_info = match get_connections_info_by_listen_port(listen_port) {
-        Ok(sockets_info) => sockets_info,
-        Err(e) => {
-            println!("Error: get sockets info failed: {:?}", e);
-            Vec::new()
-        }
-    };
-
-    // syn-recvd
-    let connecting_num = sockets_info.iter().filter(|si| {
-        match &si.protocol_socket_info {
-            ProtocolSocketInfo::Tcp(tcp_si) => {
-                match tcp_si.state {
-                    TcpState::SynReceived => true,
-                    _ => false
-                }
-            }
-            _ => false
-        }
-    }).count();
-
-    // is closing
-    let closing_num = sockets_info.iter().filter(|si| {
-        match &si.protocol_socket_info {
-            ProtocolSocketInfo::Tcp(tcp_si) => {
-                match tcp_si.state {
-                    TcpState::FinWait1 | TcpState::FinWait2 | TcpState::CloseWait | TcpState::Closing |
-                    TcpState::LastAck | TcpState::TimeWait => true,
-                    _ => false
-                }
-            }
-            _ => false
-        }
-    }).count();
-
-    // established
-    let established_num = sockets_info.iter().filter(|si| {
-        match &si.protocol_socket_info {
-            ProtocolSocketInfo::Tcp(tcp_si) => {
-                match tcp_si.state {
-                    TcpState::Established => true,
-                    _ => false
-                }
-            }
-            _ => false
-        }
-    }).count();
-
+pub fn show_statistics() {
     let local: DateTime<Local> = Local::now();
     let current_time = local.format("%Y/%m/%d %H:%M:%S").to_string();
     println!("################################################################################");
     println!("Current time: {}", current_time);
     println!(" __ Connections ____________________________");
     println!("|                                           |");
-    println!("|   Connecting        : {}", connecting_num);
-    println!("|   Established       : {}", established_num);
-    println!("|   Closing           : {}", closing_num);
+    println!("|   Connecting        : {}", 1000);
     println!("|___________________________________________|");
     println!(" __ Request ________________________________");
     println!("|                                           |");
