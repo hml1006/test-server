@@ -38,6 +38,7 @@ use std::str::FromStr;
 use std::path::Path;
 use crate::types::mime_types::MimeType;
 use crate::types::route::{Content, RouteInfo};
+use crate::types::buf::Buf;
 use std::fs::File;
 use std::io::Read;
 use http::{HeaderMap, HeaderValue};
@@ -71,7 +72,7 @@ lazy_static! {
     // routes configuration
     static ref ROUTES: RwLock<HashMap<String, RouteInfo>> = RwLock::new(HashMap::new());
     // file cache
-    static ref FILE_CACHE: RwLock<HashMap<String, Arc<*const u8>>> = RwLock::new(HashMap::new());
+    static ref FILE_CACHE: RwLock<HashMap<String, Buf>> =RwLock::new(HashMap::new());
 }
 // if a file size small then MAX_FILE_CACHE_LENGTH, then this file will be cached
 const MAX_FILE_CACHE_LENGTH: u64 = 512 * 1024;
@@ -124,16 +125,16 @@ fn response(req: Request<Body>) -> ResponseFuture {
                     Content::Cache => {
                         match FILE_CACHE.read().unwrap().get(&url) {
                             Some(content) => {
-                                Box::new(future::ok(builder.body(Body::from(*content.as_ref())).unwrap()))
-                            },
+                                Box::new(future::ok(builder.body(Body::from(content.get_data())).unwrap()))
+                            }
                             None => {
                                 Box::new(future::ok(builder.status(StatusCode::NOT_FOUND).body(Body::from("not found")).unwrap()))
                             }
                         }
-                    },
+                    }
                     Content::Content(content) => {
                         Box::new(future::ok(builder.body(Body::from(content.clone())).unwrap()))
-                    },
+                    }
                     Content::File(file) => {
                         Box::new(future::ok(builder.body(Body::from(file.clone())).unwrap()))
                     }
@@ -446,8 +447,15 @@ fn parse_mime_and_body(yaml: &Yaml, file_key: &yaml_rust::yaml::Yaml, url: Strin
                                     };
                                     match file.read_to_end(buf.as_mut()) {
                                         Ok(_) => {
-                                            FILE_CACHE.write().unwrap().insert(url, buf);
-                                            return Ok((mime_type, Content::Cache, StatusCode::OK));
+                                            let buf = Buf::from_vec(&buf);
+                                            match buf {
+                                                Some(buf) => {
+                                                    FILE_CACHE.write().unwrap().insert(url, buf);
+                                                    return Ok((mime_type, Content::Cache, StatusCode::OK));
+                                                }
+                                                None => return Ok((MimeType::TextPlain, Content::Content(format!("internal error: memory alloc failed")), StatusCode::INTERNAL_SERVER_ERROR))
+                                            }
+
                                         }
                                         Err(e) => {
                                             println!("read file failed: {:?} => {:?}", e, abs_path);
