@@ -2,15 +2,15 @@
 get:
   -
     url: /
-    file: ~/code/test-server/index.html
+    file: ~/code/test-server/example-files/index.html
   -
     url: /check
-    file: ~/code/test-server/check.json
+    file: ~/code/test-server/example-files/check.json
 
 post:
   -
     url: /login
-    file: ~/code/test-server/logon.json
+    file: ~/code/test-server/example-files/logon.json
     headers:
         x-header-test: first-header
         x-my-header: second-header

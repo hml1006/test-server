@@ -52,9 +52,7 @@ impl Buf {
     }
 
     pub fn get_raw_mut(&mut self) -> *mut u8 {
-        unsafe {
-            self.raw
-        }
+        self.raw
     }
 
     pub fn release(&mut self) {
