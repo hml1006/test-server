@@ -279,7 +279,8 @@ fn init_route_by_yaml(yaml: &Yaml) {
         };
 
         //  build methods routes
-        let method = match Method::from_str(key.as_str().unwrap_or("")) {
+        let key = key.as_str().unwrap_or("GET").to_uppercase();
+        let method = match Method::from_str(&key) {
             Ok(method) => method,
             Err(e) => {
                 println!("method error: {}", e);

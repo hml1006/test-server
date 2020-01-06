@@ -6,6 +6,9 @@ get:
   -
     url: /check
     file: ~/code/test-server/example-files/check.json
+  -
+    url: /logon
+    file: ~/code/test-server/example-files/logon.json
 
 post:
   -
