@@ -1,7 +1,8 @@
-use http::*;
-use http::header::{Iter, HeaderName};
+use hyper::header::{Iter, HeaderName, HeaderMap, HeaderValue};
 use std::str::FromStr;
 use crate::types::mime_types::MimeType;
+use crate::types::error;
+use hyper::{StatusCode, Method};
 
 pub enum Content {
     Cache,
@@ -19,8 +20,15 @@ pub struct RouteInfo {
 }
 
 impl RouteInfo{
-    fn new(url: String, method: String, status_code: u16) -> Result<Self> {
-        let method = Method::from_str(method.as_str())?;
+    fn new(url: String, method: String, status_code: u16) -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let method = Method::from_str(method.as_str());
+        let method = match method {
+            Ok(method) => method,
+            Err(_e) => {
+                println!("invalid method");
+                return Err(Box::new(error::Error::new(error::ErrorKind::UnsupportedMethod)));
+            }
+        };
         let status_code = StatusCode::from_u16(status_code)?;
         Ok(RouteInfo {
             url,
@@ -33,7 +41,7 @@ impl RouteInfo{
     }
 
     #[allow(dead_code)]
-    fn with_default(url: String) ->Result<Self> {
+    fn with_default(url: String) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         RouteInfo::new(url, Method::GET.as_str().to_string(), StatusCode::OK.as_u16())
     }
 

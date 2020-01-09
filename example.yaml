@@ -2,18 +2,18 @@
 get:
   -
     url: /
-    file: ~/code/test-server/example-files/index.html
+    file: ~/code/opensrc/test-server/example-files/index.html
   -
     url: /check
-    file: ~/code/test-server/example-files/check.json
+    file: ~/code/opensrc/test-server/example-files/check.json
   -
     url: /logon
-    file: ~/code/test-server/example-files/logon.json
+    file: ~/code/opensrc/test-server/example-files/logon.json
 
 post:
   -
     url: /login
-    file: ~/code/test-server/example-files/logon.json
+    file: ~/code/opensrc/test-server/example-files/logon.json
     headers:
         x-header-test: first-header
         x-my-header: second-header

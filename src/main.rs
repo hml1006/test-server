@@ -6,11 +6,10 @@ extern crate hyper;
 extern crate futures;
 extern crate yaml_rust;
 extern crate http;
+extern crate tokio;
 
-mod statistic;
 mod types;
 
-use std::error::Error;
 use std::net::IpAddr;
 use std::fs;
 use std::thread;
@@ -20,19 +19,17 @@ use std::sync::Mutex;
 use std::sync::RwLock;
 use std::vec::Vec;
 use std::boxed::Box;
-
-extern crate tokio_fs;
-extern crate tokio_io;
+use std::convert::Infallible;
+use std::result::Result;
+use thread_id;
 
 use yaml_rust::{YamlLoader, Yaml};
 
 use shellexpand;
 
-use futures::{future, Future};
 use hyper::{Body, Method, Request, Response, Server, StatusCode};
-use hyper::service::service_fn;
+use hyper::service::{service_fn, make_service_fn};
 
-use statistic::show_statistics;
 use yaml_rust::yaml::Yaml::{Hash, Array};
 use std::str::FromStr;
 use std::path::Path;
@@ -41,12 +38,7 @@ use crate::types::mime_types::MimeType;
 use crate::types::route::{Content, RouteInfo};
 use std::fs::File;
 use std::io::Read;
-use http::{HeaderMap, HeaderValue};
-use http::header::HeaderName;
-use hyper::http::header;
-
-type GenericError = Box<dyn std::error::Error + Send + Sync>;
-type ResponseFuture = Box<dyn Future<Item=Response<Body>, Error=GenericError> + Send>;
+use hyper::header::{HeaderMap, HeaderName, HeaderValue};
 
 /// version
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -56,13 +48,17 @@ const NAME: &'static str = env!("CARGO_PKG_NAME");
 const DESCRIPTION: &'static str = env!("CARGO_PKG_DESCRIPTION");
 /// author
 const AUTHOR: &'static str = env!("CARGO_PKG_AUTHORS");
-// keep_alive timeout: seconds
-const KEEPALIVE: usize = 75;
 
 // keys
 const KEY_IP: &'static str = "ip";
 const KEY_PORT: &'static str = "port";
 const KEY_INTERNAL: &'static str = "internal";
+
+// if a file size small then MAX_FILE_CACHE_LENGTH, then this file will be cached
+const MAX_FILE_CACHE_LENGTH: u64 = 512 * 1024;
+
+// default statistics information refresh time
+const DEFAULT_STATS_REFRESH_INTERVAL: u64 = 2;
 
 lazy_static! {
     //parameters from command line
@@ -72,20 +68,23 @@ lazy_static! {
     // routes configuration
     static ref ROUTES: RwLock<HashMap<String, RouteInfo>> = RwLock::new(HashMap::new());
     // file cache
-    static ref FILE_CACHE: RwLock<HashMap<String, Arc<Box<Vec<u8>>>>> =RwLock::new(HashMap::new());
+    static ref FILE_CACHE: RwLock<HashMap<String, Arc<Box<Vec<u8>>>>> = RwLock::new(HashMap::new());
+    // statistics, structure
+    // thread_id 1 => status code 200 => 20
+    //             => status code 404 => 32
+    // thread_id 2 => status code 200 => 11
+    //             => status code 403 => 22
+    static ref STATISTICS: RwLock<HashMap<usize, Arc<HashMap<u16, Box<u64>>>>> = RwLock::new(HashMap::new());
+    // total connections
+    static ref TOTAL_CONNECTIONS: RwLock<u64> = RwLock::new(0);
 }
-// if a file size small then MAX_FILE_CACHE_LENGTH, then this file will be cached
-const MAX_FILE_CACHE_LENGTH: u64 = 512 * 1024;
 
-// default statistics information refresh time
-const DEFAULT_STATS_REFRESH_INTERVAL: u64 = 1;
-
-
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let ret = parse_args();
     if let Err(_) = ret {
         println!("init failed!");
-        return;
+        return Ok(());
     }
 
     println!("parse args success");
@@ -101,65 +100,109 @@ fn main() {
 
     println!("init route success");
 
-    let config = CONFIGURATION.lock().unwrap();
-
-    let addr = format!("{}:{}", config.get(KEY_IP).unwrap(), config.get(KEY_PORT).unwrap());
+    let addr = {
+        let config = CONFIGURATION.lock().unwrap();
+        format!("{}:{}", config.get(KEY_IP).unwrap(), config.get(KEY_PORT).unwrap())
+    };
     println!("listening on {}", addr);
     let addr = addr.parse().unwrap();
-    // bind address
-    let server = Server::bind(&addr)
-        .serve(|| service_fn(response))
-        .map_err(|e| eprintln!("server error: {}", e));
 
-    hyper::rt::run(server);
+    // And a MakeService to handle each connection...
+    let make_service = make_service_fn(|_conn| async {
+        inc_connections();
+        Ok::<_, Infallible>(service_fn(response))
+    });
 
     create_stat_thread();
+
+    // Then bind and serve...
+    let server = Server::bind(&addr).serve(make_service);
+    server.await?;
+
+    Ok(())
 }
 
-fn response(req: Request<Body>) -> ResponseFuture {
+fn inc_response(thread_id: usize, status_code: u16) {
+    let mut statistics = STATISTICS.write().unwrap();
+    let thread_statistics = statistics.get(&thread_id);
+    if thread_statistics.is_some() {
+        let http_statistics = thread_statistics.unwrap().get(&status_code);
+        if http_statistics.is_some() {
+            let raw = Box::into_raw((http_statistics.unwrap()).clone());
+            unsafe {
+                let count: u64 = *raw;
+                *raw = count + 1;
+            }
+        } else {
+            let mut thread_statistics = thread_statistics.unwrap().clone();
+            Arc::get_mut(&mut thread_statistics).unwrap().insert(status_code.clone(), Box::new(1u64));
+        }
+    } else {
+        let mut http_statistics = Arc::new(HashMap::new());
+        Arc::get_mut(&mut http_statistics).unwrap().insert(status_code.clone(), Box::new(1u64));
+        statistics.insert(thread_id, http_statistics);
+    }
+}
+
+fn inc_connections() {
+    *TOTAL_CONNECTIONS.write().unwrap() += 1;
+}
+
+fn get_total_connections() -> u64 {
+    *TOTAL_CONNECTIONS.read().unwrap()
+}
+
+async fn response(req: Request<Body>) -> Result<Response<Body>, Infallible> {
     let url = req.uri().path().to_string();
+    let thread_id: usize = thread_id::get();
     match ROUTES.read().unwrap().get(&url) {
         Some(route) => {
             if route.method == req.method() {
-                let mut builder = Response::builder();
-                builder.status(route.status_code);
-                builder.header(header::CONTENT_TYPE, route.mime_type.to_string());
-                for (key, value) in route.headers.iter() {
-                    builder.header(key, value);
-                }
+                let builder = hyper::Response::builder();
+                let builder = builder.status(route.status_code);
+                let mut builder = builder.header("Content-Type", route.mime_type.to_string());
+                let headers = builder.headers_mut().unwrap();
+                route.headers.iter().for_each(|(key, value)| {
+                    headers.insert(key, value.clone());
+                });
                 match &route.body {
                     Content::Cache => {
                         let map = FILE_CACHE.read().unwrap();
                         let ref content = map.get(&url);
                         if content.is_some() {
-//                            let data = *(content.unwrap());
                             let len = content.unwrap().len();
                             let raw = (*content.unwrap()).as_ptr();
                             unsafe {
-                                Box::new(future::ok(builder.body(Body::from(std::slice::from_raw_parts(raw, len))).unwrap()))
+                                inc_response(thread_id, route.status_code.as_u16());
+                                Ok(builder.body(Body::from(std::slice::from_raw_parts(raw, len))).unwrap())
                             }
                         } else {
-                            Box::new(future::ok(builder.status(StatusCode::NOT_FOUND).body(Body::from("not found")).unwrap()))
+                            inc_response(thread_id, StatusCode::NOT_FOUND.as_u16());
+                            Ok(builder.status(StatusCode::NOT_FOUND).body(Body::from("not found")).unwrap())
                         }
                     }
                     Content::Content(content) => {
-                        Box::new(future::ok(builder.body(Body::from(content.clone())).unwrap()))
+                        inc_response(thread_id, route.status_code.as_u16());
+                        Ok(builder.body(Body::from(content.clone())).unwrap())
                     }
                     Content::File(file) => {
-                        Box::new(future::ok(builder.body(Body::from(file.clone())).unwrap()))
+                        inc_response(thread_id, route.status_code.as_u16());
+                        Ok(builder.body(Body::from(file.clone())).unwrap())
                     }
                 }
             } else {
-                Box::new(future::ok(Response::builder().status(StatusCode::METHOD_NOT_ALLOWED)
+                inc_response(thread_id, StatusCode::METHOD_NOT_ALLOWED.as_u16());
+                Ok(Response::builder().status(StatusCode::METHOD_NOT_ALLOWED)
                     .body(Body::from("method for this request is not implemented"))
-                    .unwrap()))
+                    .unwrap())
             }
         }
         None => {
-            Box::new(future::ok(Response::builder()
+            inc_response(thread_id, StatusCode::NOT_FOUND.as_u16());
+            Ok(Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Body::empty())
-                .unwrap()))
+                .unwrap())
         }
     }
 }
@@ -168,14 +211,19 @@ fn response(req: Request<Body>) -> ResponseFuture {
 fn create_stat_thread() {
     thread::spawn(move || {
         loop {
-            thread::sleep(Duration::new(CONFIGURATION.lock().unwrap().get(KEY_INTERNAL).unwrap().parse().unwrap(), 0));
+            let durection = Duration::from_secs(CONFIGURATION.lock().unwrap().get(KEY_INTERNAL).unwrap().parse().unwrap());
+            thread::sleep(durection);
             show_statistics();
         }
     });
 }
 
+fn show_statistics() {
+    println!("connections received: {}", get_total_connections());
+}
+
 /// init configuration
-fn parse_args() -> std::result::Result<(), Box<dyn Error>> {
+fn parse_args() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // build arguments parser
     let matches = clap_app!(myapp =>
         (name: NAME)
@@ -249,7 +297,7 @@ fn parse_args() -> std::result::Result<(), Box<dyn Error>> {
 }
 
 // parse yaml
-fn parse_yaml(yaml: &str) -> Result<(), Box<dyn Error>> {
+fn parse_yaml(yaml: &str) -> Result<(), Box<dyn std::error::Error>> {
     // parse yaml string
     let docs = match YamlLoader::load_from_str(yaml) {
         Ok(yaml) => yaml,
@@ -402,7 +450,7 @@ fn parse_headers(yaml: &Yaml) -> HeaderMap {
     header_map
 }
 
-fn parse_mime_and_body(yaml: &Yaml, file_key: &yaml_rust::yaml::Yaml, url: String) -> Result<(MimeType, Content, StatusCode), Box<dyn Error>> {
+fn parse_mime_and_body(yaml: &Yaml, file_key: &yaml_rust::yaml::Yaml, url: String) -> Result<(MimeType, Content, StatusCode), Box<dyn std::error::Error>> {
     let element = match yaml {
         Hash(yaml) => yaml,
         _ => {
