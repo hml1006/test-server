@@ -10,8 +10,6 @@ description = "It's a http/https test server, and can offer statistical metrics 
 [dependencies]
 clap = "2.33.0"
 hyper = "0.13.1"
-http = "*"
-futures = "*"
 chrono = "0.4"
 lazy_static = "1.4.0"
 yaml-rust = "0.4.3"

@@ -3,9 +3,7 @@ extern crate clap;
 #[macro_use]
 extern crate lazy_static;
 extern crate hyper;
-extern crate futures;
 extern crate yaml_rust;
-extern crate http;
 extern crate tokio;
 
 mod types;
