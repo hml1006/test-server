@@ -13,7 +13,6 @@ use std::net::IpAddr;
 use std::fs;
 use std::thread;
 use std::time::Duration;
-use std::collections::HashMap;
 use std::sync::Mutex;
 use std::sync::RwLock;
 use std::vec::Vec;
@@ -71,7 +70,7 @@ lazy_static! {
     //             => status code 404 => 32
     // thread_id 2 => status code 200 => 11
     //             => status code 403 => 22
-    static ref STATISTICS: RwLock<HashMap<usize, Arc<HashMap<u16, Box<u64>>>>> = RwLock::new(HashMap::new());
+    static ref STATISTICS: DashMap<usize, DashMap<u16, Box<u64>>> = DashMap::new();
     // total connections, this variable stores all connections number that has been received from program start to now
     static ref TOTAL_CONNECTIONS: RwLock<u64> = RwLock::new(0);
 }
@@ -120,10 +119,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
 /// increase the response number by thread id and status code
 fn inc_response(thread_id: usize, status_code: u16) {
-    let mut statistics = STATISTICS.write().unwrap();
-    let thread_statistics = statistics.get(&thread_id);
+    let thread_statistics = STATISTICS.get(&thread_id);
     if thread_statistics.is_some() {
-        let http_statistics = thread_statistics.unwrap().get(&status_code);
+        let thread_statistics = thread_statistics.unwrap();
+        let ref thread_statistics = thread_statistics.value();
+        let http_statistics = thread_statistics.get(&status_code);
         if http_statistics.is_some() {
             let raw = Box::into_raw((http_statistics.unwrap()).clone());
             unsafe {
@@ -131,13 +131,12 @@ fn inc_response(thread_id: usize, status_code: u16) {
                 *raw = count + 1;
             }
         } else {
-            let mut thread_statistics = thread_statistics.unwrap().clone();
-            Arc::get_mut(&mut thread_statistics).unwrap().insert(status_code.clone(), Box::new(1u64));
+            thread_statistics.insert(status_code.clone(), Box::new(1u64));
         }
     } else {
-        let mut http_statistics = Arc::new(HashMap::new());
-        Arc::get_mut(&mut http_statistics).unwrap().insert(status_code.clone(), Box::new(1u64));
-        statistics.insert(thread_id, http_statistics);
+        let http_statistics = DashMap::new();
+        http_statistics.insert(status_code.clone(), Box::new(1u64));
+        STATISTICS.insert(thread_id, http_statistics);
     }
 }
 
