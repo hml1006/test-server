@@ -16,3 +16,5 @@ yaml-rust = "0.4.3"
 shellexpand = "1.0.0"
 tokio = { version = "0.2", features = ["full"] }
 thread-id = "3.3.0"
+dashmap = "2.1.1"
+# shared-data = "0.0.2"

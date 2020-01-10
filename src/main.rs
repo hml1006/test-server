@@ -5,6 +5,7 @@ extern crate lazy_static;
 extern crate hyper;
 extern crate yaml_rust;
 extern crate tokio;
+extern crate dashmap;
 
 mod types;
 
@@ -19,24 +20,22 @@ use std::vec::Vec;
 use std::boxed::Box;
 use std::convert::Infallible;
 use std::result::Result;
-use thread_id;
-
-use yaml_rust::{YamlLoader, Yaml};
-
-use shellexpand;
-
-use hyper::{Body, Method, Request, Response, Server, StatusCode};
-use hyper::service::{service_fn, make_service_fn};
-
-use yaml_rust::yaml::Yaml::{Hash, Array};
 use std::str::FromStr;
 use std::path::Path;
 use std::sync::Arc;
-use crate::types::mime_types::MimeType;
-use crate::types::route::{Content, RouteInfo};
 use std::fs::File;
 use std::io::Read;
+use thread_id;
+use dashmap::DashMap;
+use yaml_rust::{YamlLoader, Yaml};
+use shellexpand;
+use hyper::{Body, Method, Request, Response, Server, StatusCode};
+use hyper::service::{service_fn, make_service_fn};
+use yaml_rust::yaml::Yaml::{Hash, Array};
 use hyper::header::{HeaderMap, HeaderName, HeaderValue};
+
+use crate::types::mime_types::MimeType;
+use crate::types::route::{Content, RouteInfo};
 
 /// version
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -60,20 +59,20 @@ const DEFAULT_STATS_REFRESH_INTERVAL: u64 = 2;
 
 lazy_static! {
     //parameters from command line
-    static ref CONFIGURATION: Mutex<HashMap<&'static str, String>> = Mutex::new(HashMap::new());
+    static ref CONFIGURATION: DashMap<&'static str, String> = DashMap::new();
     // yaml configuration
     static ref YAML_CONFIG: Mutex<Vec<Yaml>> = Mutex::new(Vec::new());
     // routes configuration
-    static ref ROUTES: RwLock<HashMap<String, RouteInfo>> = RwLock::new(HashMap::new());
+    static ref ROUTES: DashMap<String, RouteInfo> = DashMap::new();
     // file cache
-    static ref FILE_CACHE: RwLock<HashMap<String, Arc<Box<Vec<u8>>>>> = RwLock::new(HashMap::new());
+    static ref FILE_CACHE: DashMap<String, Arc<Box<Vec<u8>>>> = DashMap::new();
     // statistics, structure
     // thread_id 1 => status code 200 => 20
     //             => status code 404 => 32
     // thread_id 2 => status code 200 => 11
     //             => status code 403 => 22
     static ref STATISTICS: RwLock<HashMap<usize, Arc<HashMap<u16, Box<u64>>>>> = RwLock::new(HashMap::new());
-    // total connections
+    // total connections, this variable stores all connections number that has been received from program start to now
     static ref TOTAL_CONNECTIONS: RwLock<u64> = RwLock::new(0);
 }
 
@@ -99,8 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("init route success");
 
     let addr = {
-        let config = CONFIGURATION.lock().unwrap();
-        format!("{}:{}", config.get(KEY_IP).unwrap(), config.get(KEY_PORT).unwrap())
+        format!("{}:{}", CONFIGURATION.get(KEY_IP).unwrap().value(), CONFIGURATION.get(KEY_PORT).unwrap().value())
     };
     println!("listening on {}", addr);
     let addr = addr.parse().unwrap();
@@ -120,6 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     Ok(())
 }
 
+/// increase the response number by thread id and status code
 fn inc_response(thread_id: usize, status_code: u16) {
     let mut statistics = STATISTICS.write().unwrap();
     let thread_statistics = statistics.get(&thread_id);
@@ -142,10 +141,12 @@ fn inc_response(thread_id: usize, status_code: u16) {
     }
 }
 
+/// if a new connection comming, increase the global count
 fn inc_connections() {
     *TOTAL_CONNECTIONS.write().unwrap() += 1;
 }
 
+/// get total connections number
 fn get_total_connections() -> u64 {
     *TOTAL_CONNECTIONS.read().unwrap()
 }
@@ -153,8 +154,9 @@ fn get_total_connections() -> u64 {
 async fn response(req: Request<Body>) -> Result<Response<Body>, Infallible> {
     let url = req.uri().path().to_string();
     let thread_id: usize = thread_id::get();
-    match ROUTES.read().unwrap().get(&url) {
+    match ROUTES.get(&url) {
         Some(route) => {
+            let route = route.value();
             if route.method == req.method() {
                 let builder = hyper::Response::builder();
                 let builder = builder.status(route.status_code);
@@ -165,11 +167,11 @@ async fn response(req: Request<Body>) -> Result<Response<Body>, Infallible> {
                 });
                 match &route.body {
                     Content::Cache => {
-                        let map = FILE_CACHE.read().unwrap();
-                        let ref content = map.get(&url);
+                        let content = FILE_CACHE.get(&url);
                         if content.is_some() {
-                            let len = content.unwrap().len();
-                            let raw = (*content.unwrap()).as_ptr();
+                            let content = content.unwrap();
+                            let len = content.len();
+                            let raw = content.as_ptr();
                             unsafe {
                                 inc_response(thread_id, route.status_code.as_u16());
                                 Ok(builder.body(Body::from(std::slice::from_raw_parts(raw, len))).unwrap())
@@ -209,7 +211,7 @@ async fn response(req: Request<Body>) -> Result<Response<Body>, Infallible> {
 fn create_stat_thread() {
     thread::spawn(move || {
         loop {
-            let durection = Duration::from_secs(CONFIGURATION.lock().unwrap().get(KEY_INTERNAL).unwrap().parse().unwrap());
+            let durection = Duration::from_secs(CONFIGURATION.get(KEY_INTERNAL).unwrap().value().parse().unwrap());
             thread::sleep(durection);
             show_statistics();
         }
@@ -243,7 +245,7 @@ fn parse_args() -> std::result::Result<(), Box<dyn std::error::Error>> {
             return Err(Box::new(e));
         }
     };
-    CONFIGURATION.lock().unwrap().insert(KEY_IP, ip_str.to_string());
+    CONFIGURATION.insert(KEY_IP, ip_str.to_string());
 
     // parse or set defalut port number
     let port = match matches.value_of("port").unwrap_or("8088").parse::<u16>() {
@@ -253,7 +255,7 @@ fn parse_args() -> std::result::Result<(), Box<dyn std::error::Error>> {
             return Err(Box::new(e));
         }
     };
-    CONFIGURATION.lock().unwrap().insert(KEY_PORT, port.to_string());
+    CONFIGURATION.insert(KEY_PORT, port.to_string());
 
     // parse statistics information interval
     let interval = match matches.value_of("interval").unwrap_or(&DEFAULT_STATS_REFRESH_INTERVAL.to_string()).parse::<u64>() {
@@ -263,7 +265,7 @@ fn parse_args() -> std::result::Result<(), Box<dyn std::error::Error>> {
             return Err(Box::new(e));
         }
     };
-    CONFIGURATION.lock().unwrap().insert(KEY_INTERNAL, interval.to_string());
+    CONFIGURATION.insert(KEY_INTERNAL, interval.to_string());
 
     // get yaml configuration
     let yaml = matches.value_of("yaml");
@@ -310,6 +312,7 @@ fn parse_yaml(yaml: &str) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+// init route from yaml
 fn init_route_by_yaml(yaml: &Yaml) {
     let yaml = match yaml {
         Hash(yaml) => yaml,
@@ -387,7 +390,7 @@ fn init_route_by_yaml(yaml: &Yaml) {
                     };
 
                     // add route
-                    ROUTES.write().unwrap().insert(url.clone(), RouteInfo {
+                    ROUTES.insert(url.clone(), RouteInfo {
                         url,
                         method: method.clone(),
                         status_code,
@@ -505,7 +508,7 @@ fn parse_mime_and_body(yaml: &Yaml, file_key: &yaml_rust::yaml::Yaml, url: Strin
                                     };
                                     match file.read_to_end(buffer.as_mut()) {
                                         Ok(_) => {
-                                            FILE_CACHE.write().unwrap().insert(url, Arc::new(buffer));
+                                            FILE_CACHE.insert(url, Arc::new(buffer));
                                             return Ok((mime_type, Content::Cache, StatusCode::OK));
                                         }
                                         Err(e) => {
