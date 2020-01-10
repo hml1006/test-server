@@ -280,6 +280,8 @@ fn parse_args() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    println!("yaml path: {}", yaml);
+
     // read yaml file to string
     let yaml = match fs::read_to_string(yaml) {
         Ok(yaml) => yaml,

@@ -9,15 +9,11 @@ pub struct MimeTypeParseError(());
 
 impl fmt::Display for MimeTypeParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.description())
+        write!(f, "parse mime type from file extension failed")
     }
 }
 
-impl Error for MimeTypeParseError {
-    fn description(&self) -> &str {
-        "parse mime type from file extension failed"
-    }
-}
+impl Error for MimeTypeParseError {}
 
 pub enum MimeType {
     TextHtml,
