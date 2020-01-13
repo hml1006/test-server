@@ -2,36 +2,39 @@
 extern crate clap;
 #[macro_use]
 extern crate lazy_static;
-extern crate hyper;
-extern crate yaml_rust;
-extern crate tokio;
 extern crate dashmap;
+extern crate hyper;
+extern crate tokio;
+extern crate yaml_rust;
 
 mod types;
 
-use std::net::IpAddr;
-use std::fs;
-use std::thread;
-use std::time::Duration;
-use std::sync::Mutex;
-use std::sync::RwLock;
-use std::vec::Vec;
+use dashmap::DashMap;
+use hyper::header::{HeaderMap, HeaderName, HeaderValue};
+use hyper::service::{make_service_fn, service_fn};
+use hyper::{Body, Method, Request, Response, Server, StatusCode};
+use itertools::Itertools;
+use shellexpand;
 use std::boxed::Box;
+use std::collections::HashMap;
 use std::convert::Infallible;
-use std::result::Result;
-use std::str::FromStr;
-use std::path::Path;
-use std::sync::Arc;
+use std::env;
+use std::fs;
 use std::fs::File;
 use std::io::Read;
+use std::net::IpAddr;
+use std::path::Path;
+use std::result::Result;
+use std::str::FromStr;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::RwLock;
+use std::thread;
+use std::time::Duration;
+use std::vec::Vec;
 use thread_id;
-use dashmap::DashMap;
-use yaml_rust::{YamlLoader, Yaml};
-use shellexpand;
-use hyper::{Body, Method, Request, Response, Server, StatusCode};
-use hyper::service::{service_fn, make_service_fn};
-use yaml_rust::yaml::Yaml::{Hash, Array};
-use hyper::header::{HeaderMap, HeaderName, HeaderValue};
+use yaml_rust::yaml::Yaml::{Array, Hash};
+use yaml_rust::{Yaml, YamlLoader};
 
 use crate::types::mime_types::MimeType;
 use crate::types::route::{Content, RouteInfo};
@@ -77,6 +80,7 @@ lazy_static! {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    env::set_var("RUST_BACKTRACE", "full");
     let ret = parse_args();
     if let Err(_) = ret {
         println!("init failed!");
@@ -97,15 +101,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("init route success");
 
     let addr = {
-        format!("{}:{}", CONFIGURATION.get(KEY_IP).unwrap().value(), CONFIGURATION.get(KEY_PORT).unwrap().value())
+        format!(
+            "{}:{}",
+            CONFIGURATION.get(KEY_IP).unwrap().value(),
+            CONFIGURATION.get(KEY_PORT).unwrap().value()
+        )
     };
     println!("listening on {}", addr);
     let addr = addr.parse().unwrap();
 
     // And a MakeService to handle each connection...
-    let make_service = make_service_fn(|_conn| async {
-        inc_connections();
-        Ok::<_, Infallible>(service_fn(response))
+    let make_service = make_service_fn(|_conn| {
+        async {
+            inc_connections();
+            Ok::<_, Infallible>(service_fn(response))
+        }
     });
 
     create_stat_thread();
@@ -119,24 +129,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
 /// increase the response number by thread id and status code
 fn inc_response(thread_id: usize, status_code: u16) {
+    println!(
+        "increase response => thread: {}, code: {}",
+        thread_id, status_code
+    );
     let thread_statistics = STATISTICS.get(&thread_id);
-    if thread_statistics.is_some() {
-        let thread_statistics = thread_statistics.unwrap();
-        let ref thread_statistics = thread_statistics.value();
-        let http_statistics = thread_statistics.get(&status_code);
-        if http_statistics.is_some() {
-            let raw = Box::into_raw((http_statistics.unwrap()).clone());
-            unsafe {
-                let count: u64 = *raw;
-                *raw = count + 1;
+    match thread_statistics {
+        Some(thread_statistics) => {
+            let thread_statistics = thread_statistics.value();
+            let http_statistics = thread_statistics.get_mut(&status_code);
+            match http_statistics {
+                Some(mut http_statistics) => {
+                    let ptr = http_statistics.value_mut();
+                    let count = **ptr;
+                    **ptr = count + 1;
+                }
+                None => {
+                    thread_statistics.insert(status_code.clone(), Box::new(1u64));
+                }
             }
-        } else {
-            thread_statistics.insert(status_code.clone(), Box::new(1u64));
         }
-    } else {
-        let http_statistics = DashMap::new();
-        http_statistics.insert(status_code.clone(), Box::new(1u64));
-        STATISTICS.insert(thread_id, http_statistics);
+        None => {
+            let http_statistics = DashMap::new();
+            http_statistics.insert(status_code.clone(), Box::new(1u64));
+            STATISTICS.insert(thread_id, http_statistics);
+        }
     }
 }
 
@@ -148,6 +165,29 @@ fn inc_connections() {
 /// get total connections number
 fn get_total_connections() -> u64 {
     *TOTAL_CONNECTIONS.read().unwrap()
+}
+
+/// get response statistics
+/// status code -> count
+fn get_response_statistic() -> Box<HashMap<u16, u64>> {
+    let mut statistic = Box::new(HashMap::new());
+    STATISTICS.iter().for_each(|thread_statistic| {
+        thread_statistic.iter().for_each(|status_statistic| {
+            let code = *status_statistic.key();
+            let current_count = **status_statistic.value();
+            let status = statistic.get(&code);
+            match status {
+                Some(count) => {
+                    let total = current_count + count;
+                    statistic.insert(code, total);
+                }
+                None => {
+                    statistic.insert(code, current_count);
+                }
+            }
+        });
+    });
+    statistic
 }
 
 async fn response(req: Request<Body>) -> Result<Response<Body>, Infallible> {
@@ -173,11 +213,16 @@ async fn response(req: Request<Body>) -> Result<Response<Body>, Infallible> {
                             let raw = content.as_ptr();
                             unsafe {
                                 inc_response(thread_id, route.status_code.as_u16());
-                                Ok(builder.body(Body::from(std::slice::from_raw_parts(raw, len))).unwrap())
+                                Ok(builder
+                                    .body(Body::from(std::slice::from_raw_parts(raw, len)))
+                                    .unwrap())
                             }
                         } else {
                             inc_response(thread_id, StatusCode::NOT_FOUND.as_u16());
-                            Ok(builder.status(StatusCode::NOT_FOUND).body(Body::from("not found")).unwrap())
+                            Ok(builder
+                                .status(StatusCode::NOT_FOUND)
+                                .body(Body::from("not found"))
+                                .unwrap())
                         }
                     }
                     Content::Content(content) => {
@@ -191,7 +236,8 @@ async fn response(req: Request<Body>) -> Result<Response<Body>, Infallible> {
                 }
             } else {
                 inc_response(thread_id, StatusCode::METHOD_NOT_ALLOWED.as_u16());
-                Ok(Response::builder().status(StatusCode::METHOD_NOT_ALLOWED)
+                Ok(Response::builder()
+                    .status(StatusCode::METHOD_NOT_ALLOWED)
                     .body(Body::from("method for this request is not implemented"))
                     .unwrap())
             }
@@ -208,17 +254,31 @@ async fn response(req: Request<Body>) -> Result<Response<Body>, Infallible> {
 
 /// create statistics thread
 fn create_stat_thread() {
-    thread::spawn(move || {
-        loop {
-            let durection = Duration::from_secs(CONFIGURATION.get(KEY_INTERNAL).unwrap().value().parse().unwrap());
-            thread::sleep(durection);
-            show_statistics();
-        }
+    thread::spawn(move || loop {
+        let durection = Duration::from_secs(
+            CONFIGURATION
+                .get(KEY_INTERNAL)
+                .unwrap()
+                .value()
+                .parse()
+                .unwrap(),
+        );
+        thread::sleep(durection);
+        show_statistics();
     });
 }
 
 fn show_statistics() {
     println!("connections received: {}", get_total_connections());
+    println!("response statistics:");
+    let iter = get_response_statistic().into_iter();
+    let resp_status_statistic: Vec<_> = iter.collect();
+    resp_status_statistic
+        .into_iter()
+        .sorted_by(|a, b| Ord::cmp(&a.0, &b.0))
+        .for_each(|(code, count)| {
+            println!("{} => {}", code, count);
+        });
 }
 
 /// init configuration
@@ -257,7 +317,11 @@ fn parse_args() -> std::result::Result<(), Box<dyn std::error::Error>> {
     CONFIGURATION.insert(KEY_PORT, port.to_string());
 
     // parse statistics information interval
-    let interval = match matches.value_of("interval").unwrap_or(&DEFAULT_STATS_REFRESH_INTERVAL.to_string()).parse::<u64>() {
+    let interval = match matches
+        .value_of("interval")
+        .unwrap_or(&DEFAULT_STATS_REFRESH_INTERVAL.to_string())
+        .parse::<u64>()
+    {
         Ok(interval) => interval,
         Err(e) => {
             println!("parse interval failed: {:?}", e);
@@ -315,7 +379,7 @@ fn parse_yaml(yaml: &str) -> Result<(), Box<dyn std::error::Error>> {
 fn init_route_by_yaml(yaml: &Yaml) {
     let yaml = match yaml {
         Hash(yaml) => yaml,
-        _ => return
+        _ => return,
     };
 
     for (key, value) in yaml.iter() {
@@ -342,20 +406,19 @@ fn init_route_by_yaml(yaml: &Yaml) {
         let url_key = yaml_rust::Yaml::String("url".to_string());
         let file_key = yaml_rust::Yaml::String("file".to_string());
         let headers_key = yaml_rust::Yaml::String("headers".to_string());
-//        let status_code_key = yaml_rust::Yaml::String("status_code".to_string());
+        //        let status_code_key = yaml_rust::Yaml::String("status_code".to_string());
 
         // filter from array that has url filed.
-        let value = value.iter().filter(|element| {
-            match element {
-                Hash(element) => {
-                    element.contains_key(&url_key)
-                }
+        let value = value
+            .iter()
+            .filter(|element| match element {
+                Hash(element) => element.contains_key(&url_key),
                 _ => {
                     println!("request configuration should be hash type: {:?}", element);
                     false
                 }
-            }
-        }).collect::<Vec<&Yaml>>();
+            })
+            .collect::<Vec<&Yaml>>();
 
         // traverse all requests configuration
         for req in value.into_iter() {
@@ -372,13 +435,14 @@ fn init_route_by_yaml(yaml: &Yaml) {
                     };
 
                     // mime type, body and status code
-                    let (mime_type, body, status_code) = match parse_mime_and_body(&req, &file_key, url.clone()) {
-                        Ok(value) => value,
-                        Err(e) => {
-                            println!("error occurred while parsing mime and body: {}", e);
-                            continue;
-                        }
-                    };
+                    let (mime_type, body, status_code) =
+                        match parse_mime_and_body(&req, &file_key, url.clone()) {
+                            Ok(value) => value,
+                            Err(e) => {
+                                println!("error occurred while parsing mime and body: {}", e);
+                                continue;
+                            }
+                        };
 
                     // parse headers
                     let headers = element.get(&headers_key);
@@ -389,14 +453,17 @@ fn init_route_by_yaml(yaml: &Yaml) {
                     };
 
                     // add route
-                    ROUTES.insert(url.clone(), RouteInfo {
-                        url,
-                        method: method.clone(),
-                        status_code,
-                        mime_type,
-                        headers,
-                        body,
-                    });
+                    ROUTES.insert(
+                        url.clone(),
+                        RouteInfo {
+                            url,
+                            method: method.clone(),
+                            status_code,
+                            mime_type,
+                            headers,
+                            body,
+                        },
+                    );
                 }
                 _ => {}
             }
@@ -417,31 +484,29 @@ fn parse_headers(yaml: &Yaml) -> HeaderMap {
 
     for (key, value) in headers.iter() {
         match key {
-            yaml_rust::yaml::Yaml::String(key) => {
-                match value {
-                    yaml_rust::yaml::Yaml::String(value) => {
-                        let key = match HeaderName::from_str(key.as_str()) {
-                            Ok(key) => key,
-                            Err(e) => {
-                                println!("error header name: {}", e);
-                                continue;
-                            }
-                        };
-                        let value = match HeaderValue::from_str(value.as_str()) {
-                            Ok(value) => value,
-                            Err(e) => {
-                                println!("error header value: {}", e);
-                                continue;
-                            }
-                        };
-                        header_map.insert(key, value);
-                    }
-                    _ => {
-                        println!("value type error: {:?}", value);
-                        continue;
-                    }
+            yaml_rust::yaml::Yaml::String(key) => match value {
+                yaml_rust::yaml::Yaml::String(value) => {
+                    let key = match HeaderName::from_str(key.as_str()) {
+                        Ok(key) => key,
+                        Err(e) => {
+                            println!("error header name: {}", e);
+                            continue;
+                        }
+                    };
+                    let value = match HeaderValue::from_str(value.as_str()) {
+                        Ok(value) => value,
+                        Err(e) => {
+                            println!("error header value: {}", e);
+                            continue;
+                        }
+                    };
+                    header_map.insert(key, value);
                 }
-            }
+                _ => {
+                    println!("value type error: {:?}", value);
+                    continue;
+                }
+            },
             _ => {
                 println!("key type error: {:?}", key);
                 continue;
@@ -452,7 +517,11 @@ fn parse_headers(yaml: &Yaml) -> HeaderMap {
     header_map
 }
 
-fn parse_mime_and_body(yaml: &Yaml, file_key: &yaml_rust::yaml::Yaml, url: String) -> Result<(MimeType, Content, StatusCode), Box<dyn std::error::Error>> {
+fn parse_mime_and_body(
+    yaml: &Yaml,
+    file_key: &yaml_rust::yaml::Yaml,
+    url: String,
+) -> Result<(MimeType, Content, StatusCode), Box<dyn std::error::Error>> {
     let element = match yaml {
         Hash(yaml) => yaml,
         _ => {
@@ -465,7 +534,11 @@ fn parse_mime_and_body(yaml: &Yaml, file_key: &yaml_rust::yaml::Yaml, url: Strin
     // file filed not found, return
     let file = element.get(file_key);
     if file.is_none() {
-        return Ok((MimeType::TextPlain, Content::Content("not found file path field".to_string()), StatusCode::NOT_FOUND));
+        return Ok((
+            MimeType::TextPlain,
+            Content::Content("not found file path field".to_string()),
+            StatusCode::NOT_FOUND,
+        ));
     };
 
     match file.unwrap() {
@@ -478,7 +551,11 @@ fn parse_mime_and_body(yaml: &Yaml, file_key: &yaml_rust::yaml::Yaml, url: Strin
                 // not file or no permmision to access, return
                 if !abs_path.is_file() {
                     println!("file error: {:?}", abs_path.as_os_str());
-                    return Ok((MimeType::TextPlain, Content::Content(format!("not a file: {:?}", abs_path).to_string()), StatusCode::INTERNAL_SERVER_ERROR));
+                    return Ok((
+                        MimeType::TextPlain,
+                        Content::Content(format!("not a file: {:?}", abs_path).to_string()),
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                    ));
                 }
                 // check file extension
                 let extension = abs_path.extension();
@@ -487,12 +564,27 @@ fn parse_mime_and_body(yaml: &Yaml, file_key: &yaml_rust::yaml::Yaml, url: Strin
                 } else {
                     match extension.unwrap().to_str() {
                         Some(extension) => {
-                            let mime_type = MimeType::from_str(extension).unwrap_or(MimeType::ApplicationOctetStream);
+                            let mime_type = MimeType::from_str(extension)
+                                .unwrap_or(MimeType::ApplicationOctetStream);
                             if mime_type.is_text() {
                                 let ref meta = fs::metadata(abs_path);
                                 if meta.is_err() {
-                                    println!("get file metadata failed: {:?}", meta.as_ref().err().unwrap());
-                                    return Ok((MimeType::TextPlain, Content::Content(format!("get file metadata failed: {:?} => {:?}", abs_path, meta.as_ref().err().unwrap()).to_string()), StatusCode::INTERNAL_SERVER_ERROR));
+                                    println!(
+                                        "get file metadata failed: {:?}",
+                                        meta.as_ref().err().unwrap()
+                                    );
+                                    return Ok((
+                                        MimeType::TextPlain,
+                                        Content::Content(
+                                            format!(
+                                                "get file metadata failed: {:?} => {:?}",
+                                                abs_path,
+                                                meta.as_ref().err().unwrap()
+                                            )
+                                            .to_string(),
+                                        ),
+                                        StatusCode::INTERNAL_SERVER_ERROR,
+                                    ));
                                 }
                                 let file_length = meta.as_ref().unwrap().len();
                                 if file_length <= MAX_FILE_CACHE_LENGTH {
@@ -502,7 +594,17 @@ fn parse_mime_and_body(yaml: &Yaml, file_key: &yaml_rust::yaml::Yaml, url: Strin
                                         Ok(file) => file,
                                         Err(e) => {
                                             println!("open file failed: {:?}", e);
-                                            return Ok((MimeType::TextPlain, Content::Content(format!("open file failed: {:?} => {:?}", abs_path, e).to_string()), StatusCode::INTERNAL_SERVER_ERROR));
+                                            return Ok((
+                                                MimeType::TextPlain,
+                                                Content::Content(
+                                                    format!(
+                                                        "open file failed: {:?} => {:?}",
+                                                        abs_path, e
+                                                    )
+                                                    .to_string(),
+                                                ),
+                                                StatusCode::INTERNAL_SERVER_ERROR,
+                                            ));
                                         }
                                     };
                                     match file.read_to_end(buffer.as_mut()) {
@@ -512,28 +614,46 @@ fn parse_mime_and_body(yaml: &Yaml, file_key: &yaml_rust::yaml::Yaml, url: Strin
                                         }
                                         Err(e) => {
                                             println!("read file failed: {:?} => {:?}", e, abs_path);
-                                            return Ok((MimeType::TextPlain, Content::Content(format!("read file failed: {:?} => {:?}", e, abs_path).to_string()), StatusCode::INTERNAL_SERVER_ERROR));
+                                            return Ok((
+                                                MimeType::TextPlain,
+                                                Content::Content(
+                                                    format!(
+                                                        "read file failed: {:?} => {:?}",
+                                                        e, abs_path
+                                                    )
+                                                    .to_string(),
+                                                ),
+                                                StatusCode::INTERNAL_SERVER_ERROR,
+                                            ));
                                         }
                                     }
                                 } else {
-                                    return Ok((mime_type, Content::File(abs_path.to_str().unwrap().to_string()), StatusCode::OK));
+                                    return Ok((
+                                        mime_type,
+                                        Content::File(abs_path.to_str().unwrap().to_string()),
+                                        StatusCode::OK,
+                                    ));
                                 }
                             } else {
-                                return Ok((MimeType::ApplicationOctetStream, Content::File(full_path), StatusCode::OK));
+                                return Ok((
+                                    MimeType::ApplicationOctetStream,
+                                    Content::File(full_path),
+                                    StatusCode::OK,
+                                ));
                             }
                         }
-                        _ => {
-                            Err(String::from(format!("extension to string failed: {:?}", abs_path)).into())
-                        }
+                        _ => Err(String::from(format!(
+                            "extension to string failed: {:?}",
+                            abs_path
+                        ))
+                        .into()),
                     }
                 }
             } else {
                 Err(String::from(format!("path expend failed: {:?}", path)).into())
             }
         }
-        _ => {
-            Err(String::from(format!("file path type error: {:?}", file)).into())
-        }
+        _ => Err(String::from(format!("file path type error: {:?}", file)).into()),
     }
 }
 
@@ -545,26 +665,27 @@ fn parse_status_code(yaml: &Yaml, status_code_key: &yaml_rust::yaml::Yaml) -> St
             panic!("yaml type is not hash: {:?}", yaml);
         }
     };
-    element.get(status_code_key).map_or_else(|| StatusCode::from_u16(200).unwrap(), |value| {
-        let status = match value {
-            yaml_rust::yaml::Yaml::String(code) => {
-                match StatusCode::from_str(code.as_str()) {
+    element.get(status_code_key).map_or_else(
+        || StatusCode::from_u16(200).unwrap(),
+        |value| {
+            let status = match value {
+                yaml_rust::yaml::Yaml::String(code) => match StatusCode::from_str(code.as_str()) {
                     Ok(status) => Some(status),
                     Err(e) => {
                         println!("parse status code failed: {}", e);
                         None
                     }
+                },
+                _ => {
+                    println!("unknown status code: {:?}", value);
+                    None
                 }
+            };
+            if status.is_none() {
+                println!("use default status code 200");
+                return StatusCode::from_u16(200).unwrap();
             }
-            _ => {
-                println!("unknown status code: {:?}", value);
-                None
-            }
-        };
-        if status.is_none() {
-            println!("use default status code 200");
-            return StatusCode::from_u16(200).unwrap();
-        }
-        status.unwrap()
-    })
+            status.unwrap()
+        },
+    )
 }
