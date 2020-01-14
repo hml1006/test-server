@@ -10,11 +10,12 @@ description = "It's a http/https test server, and can offer statistical metrics 
 [dependencies]
 clap = "2.33.0"
 hyper = "0.13.1"
-chrono = "0.4"
+chrono = "0.4.10"
 lazy_static = "1.4.0"
 yaml-rust = "0.4.3"
-shellexpand = "1.0.0"
+shellexpand = "1.1.1"
 tokio = { version = "0.2", features = ["full"] }
 thread-id = "3.3.0"
 dashmap = "2.1.1"
 itertools = "0.8.2"
+console = "0.9.1"

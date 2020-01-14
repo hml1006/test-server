@@ -6,9 +6,11 @@ extern crate dashmap;
 extern crate hyper;
 extern crate tokio;
 extern crate yaml_rust;
+extern crate chrono;
 
 mod types;
 
+use console::{Term, Color, style};
 use dashmap::DashMap;
 use hyper::header::{HeaderMap, HeaderName, HeaderValue};
 use hyper::service::{make_service_fn, service_fn};
@@ -35,6 +37,7 @@ use std::vec::Vec;
 use thread_id;
 use yaml_rust::yaml::Yaml::{Array, Hash};
 use yaml_rust::{Yaml, YamlLoader};
+use chrono::prelude::*;
 
 use crate::types::mime_types::MimeType;
 use crate::types::route::{Content, RouteInfo};
@@ -57,7 +60,7 @@ const KEY_INTERNAL: &'static str = "internal";
 const MAX_FILE_CACHE_LENGTH: u64 = 512 * 1024;
 
 // default statistics information refresh time
-const DEFAULT_STATS_REFRESH_INTERVAL: u64 = 2;
+const DEFAULT_STATS_REFRESH_INTERVAL: u64 = 1;
 
 lazy_static! {
     //parameters from command line
@@ -87,18 +90,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         return Ok(());
     }
 
-    println!("parse args success");
-
     // init route information
     if YAML_CONFIG.lock().unwrap().len() > 0 {
         let yaml = YAML_CONFIG.lock().unwrap();
         let doc = yaml.get(0);
-        if !doc.is_none() {
-            init_route_by_yaml(doc.unwrap());
+        match doc {
+            Some(doc) => {
+                init_route_by_yaml(doc);
+            }
+            None => {
+                println!("yaml error");
+                return Ok(())
+            }
         }
     }
-
-    println!("init route success");
 
     let addr = {
         format!(
@@ -121,6 +126,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     create_stat_thread();
 
     // Then bind and serve...
+    // wait for web service start
     let server = Server::bind(&addr).serve(make_service);
     server.await?;
 
@@ -129,10 +135,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
 /// increase the response number by thread id and status code
 fn inc_response(thread_id: usize, status_code: u16) {
-    println!(
-        "increase response => thread: {}, code: {}",
-        thread_id, status_code
-    );
     let thread_statistics = STATISTICS.get(&thread_id);
     match thread_statistics {
         Some(thread_statistics) => {
@@ -207,22 +209,25 @@ async fn response(req: Request<Body>) -> Result<Response<Body>, Infallible> {
                 match &route.body {
                     Content::Cache => {
                         let content = FILE_CACHE.get(&url);
-                        if content.is_some() {
-                            let content = content.unwrap();
-                            let len = content.len();
-                            let raw = content.as_ptr();
-                            unsafe {
-                                inc_response(thread_id, route.status_code.as_u16());
+                        match content {
+                            Some(content) => {
+                                let len = content.len();
+                                let raw = content.as_ptr();
+                                unsafe {
+                                    inc_response(thread_id, route.status_code.as_u16());
+                                    Ok(builder
+                                        .body(Body::from(std::slice::from_raw_parts(raw, len)))
+                                        .unwrap())
+                                }
+                            }
+                            None => {
+                                println!("url: {} cache not found", &url);
+                                inc_response(thread_id, StatusCode::NOT_FOUND.as_u16());
                                 Ok(builder
-                                    .body(Body::from(std::slice::from_raw_parts(raw, len)))
+                                    .status(StatusCode::NOT_FOUND)
+                                    .body(Body::from("not found"))
                                     .unwrap())
                             }
-                        } else {
-                            inc_response(thread_id, StatusCode::NOT_FOUND.as_u16());
-                            Ok(builder
-                                .status(StatusCode::NOT_FOUND)
-                                .body(Body::from("not found"))
-                                .unwrap())
                         }
                     }
                     Content::Content(content) => {
@@ -244,6 +249,7 @@ async fn response(req: Request<Body>) -> Result<Response<Body>, Infallible> {
         }
         None => {
             inc_response(thread_id, StatusCode::NOT_FOUND.as_u16());
+            // println!("url: {} not found", url);
             Ok(Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Body::empty())
@@ -252,33 +258,74 @@ async fn response(req: Request<Body>) -> Result<Response<Body>, Infallible> {
     }
 }
 
-/// create statistics thread
-fn create_stat_thread() {
-    thread::spawn(move || loop {
-        let durection = Duration::from_secs(
-            CONFIGURATION
-                .get(KEY_INTERNAL)
-                .unwrap()
-                .value()
-                .parse()
-                .unwrap(),
-        );
-        thread::sleep(durection);
-        show_statistics();
-    });
+fn write_term(term: &Term, msg: &str, term_line_num: usize) -> usize {
+    match term.write_line(msg) {
+        Ok(_) => term_line_num + 1,
+        Err(e) => {
+            println!("write termimal failed: {}", e);
+            term_line_num.clone()
+        }
+    }
 }
 
-fn show_statistics() {
-    println!("connections received: {}", get_total_connections());
-    println!("response statistics:");
-    let iter = get_response_statistic().into_iter();
-    let resp_status_statistic: Vec<_> = iter.collect();
-    resp_status_statistic
-        .into_iter()
-        .sorted_by(|a, b| Ord::cmp(&a.0, &b.0))
-        .for_each(|(code, count)| {
-            println!("{} => {}", code, count);
-        });
+/// create statistics thread
+fn create_stat_thread() {
+    thread::spawn(move || {
+        // terminal to show statistics
+        let term = console::Term::stderr();
+        term.hide_cursor().unwrap();
+        // terminal line number
+        let mut term_line_num = 0;
+        loop {
+            // sleep
+            let durection = Duration::from_secs(
+                CONFIGURATION
+                    .get(KEY_INTERNAL)
+                    .unwrap()
+                    .value()
+                    .parse()
+                    .unwrap(),
+            );
+            thread::sleep(durection);
+
+            // clear termimal output
+            match term.clear_last_lines(term_line_num) {
+                Ok(_) => {
+                    term_line_num = 0;
+
+                    let current_time = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+                    term_line_num = write_term(&term, &format!("{} {} {}", style("***************").bold().cyan(), style(current_time).bold().green(),
+                        style("***************").bold().cyan()), term_line_num.clone());
+                    term_line_num = write_term(
+                        &term,
+                        &format!("[{}] {}", style("Connections").bold().italic().yellow().bg(Color::Black), style(get_total_connections()).bg(Color::Black).white().bold()),
+                        term_line_num.clone(),
+                    );
+                    term_line_num =
+                        write_term(&term, &format!("{}", style("-----------------------------------").green()), term_line_num.clone());
+                    //get response statistics
+                    let iter = get_response_statistic().into_iter();
+                    let resp_status_statistic: Vec<_> = iter.collect();
+
+                    // response statistics start from third bar
+                    for (_, element) in resp_status_statistic
+                        .into_iter()
+                        .sorted_by(|a, b| Ord::cmp(&a.0, &b.0))
+                        .into_iter()
+                        .enumerate()
+                    {
+                        let (code, count) = element;
+                        term_line_num = write_term(&term, &format!("[{}] {}", style(code).bold().italic().yellow().bg(Color::Black), 
+                            style(count).bg(Color::Black).white().bold()), term_line_num.clone());
+                    }
+                }
+                Err(e) => {
+                    println!("clear term failed: {}", e);
+                    continue;
+                }
+            }
+        }
+    });
 }
 
 /// init configuration
@@ -452,6 +499,7 @@ fn init_route_by_yaml(yaml: &Yaml) {
                         parse_headers(headers.unwrap())
                     };
 
+                    println!("insert url: {}", &url);
                     // add route
                     ROUTES.insert(
                         url.clone(),
@@ -465,7 +513,9 @@ fn init_route_by_yaml(yaml: &Yaml) {
                         },
                     );
                 }
-                _ => {}
+                _ => {
+                    println!("not hash element");
+                }
             }
         }
     }
