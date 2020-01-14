@@ -112,7 +112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             CONFIGURATION.get(KEY_PORT).unwrap().value()
         )
     };
-    println!("listening on {}", addr);
+    println!("{}", style(format!("listening on {}", addr)).bold().italic().yellow());
     let addr = addr.parse().unwrap();
 
     // And a MakeService to handle each connection...
@@ -127,7 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Then bind and serve...
     // wait for web service start
-    let server = Server::bind(&addr).serve(make_service);
+    let server = Server::bind(&addr).tcp_keepalive(Some(Duration::from_secs(60))).http1_keepalive(true).serve(make_service);
     server.await?;
 
     Ok(())

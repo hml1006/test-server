@@ -9,6 +9,9 @@ get:
   -
     url: /logon
     file: ~/code/opensrc/test-server/example-files/logon.json
+  -
+    url: /xx
+    file: ~/code/opensrc/test-server/example-files/xx.html
 
 post:
   -

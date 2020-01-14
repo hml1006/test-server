@@ -1,0 +1,242 @@
+
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="origin" />
+    <meta property="og:description" content="Linux系统中的wc(Word Count)命令的功能为统计指定文件中的字节数、字数、行数，并将统计结果显示输出。" />
+    <meta http-equiv="Cache-Control" content="no-transform" />
+    <meta http-equiv="Cache-Control" content="no-siteapp" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <title>每天一个linux命令（40）：wc命令 - peida - 博客园</title>
+    
+    <link rel="stylesheet" href="/css/blog-common.min.css?v=PyyhYDRKBG1sYtpoHme_xHO5AMd5iN57I45iBKF8FVY" />
+    <link id="MainCss" rel="stylesheet" href="/skins/codinglife/bundle-codinglife.min.css?v=hlpQ1CJDwwJXDxv2HNauUmW3NjyWzoMaw1uER19SLT0" />
+    
+    <link id="mobile-style" media="only screen and (max-width: 767px)" type="text/css" rel="stylesheet" href="/skins/codinglife/bundle-codinglife-mobile.min.css?v=YLOkrTk5E7_pa0CoJzjGN-4x4Qir3rlm737NcHZyQvQ" />
+    
+    <link type="application/rss+xml" rel="alternate" href="https://www.cnblogs.com/peida/rss" />
+    <link type="application/rsd+xml" rel="EditURI" href="https://www.cnblogs.com/peida/rsd.xml" />
+    <link type="application/wlwmanifest+xml" rel="wlwmanifest" href="https://www.cnblogs.com/peida/wlwmanifest.xml" />
+    <script src="https://common.cnblogs.com/scripts/jquery-2.2.0.min.js"></script>
+    <script src="/js/blog-common.min.js?v=F-Iy-_Lj7VcUKRIvNkS6UZ5LItMqjh1_L0VZk9Yxfb8"></script>
+    <script>
+        var currentBlogId = 38044;
+        var currentBlogApp = 'peida';
+        var cb_enable_mathjax = false;
+        var isLogined = false;
+    </script>
+    
+    
+    
+</head>
+<body>
+    <a name="top"></a>
+    
+    
+<!--done-->
+<div id="home">
+<div id="header">
+	<div id="blogTitle">
+        <a id="lnkBlogLogo" href="https://www.cnblogs.com/peida/"><img id="blogLogo" src="/skins/custom/images/logo.gif" alt="返回主页" /></a>		
+		
+<!--done-->
+<h1><a id="Header1_HeaderTitle" class="headermaintitle HeaderMainTitle" href="https://www.cnblogs.com/peida/">竹子-博客-架构未来</a>
+</h1>
+<h2>
+思索、感悟、践行！
+</h2>
+
+
+
+
+		
+	</div><!--end: blogTitle 博客的标题和副标题 -->
+	<div id="navigator">
+		
+<ul id="navList">
+<li><a id="blog_nav_sitehome" class="menu" href="https://www.cnblogs.com/">
+博客园</a>
+</li>
+<li>
+<a id="blog_nav_myhome" class="menu" href="https://www.cnblogs.com/peida/">
+首页</a>
+</li>
+<li>
+
+<a id="blog_nav_newpost" class="menu" href="https://i.cnblogs.com/EditPosts.aspx?opt=1">
+新随笔</a>
+</li>
+<li>
+<a id="blog_nav_contact" class="menu" href="https://msg.cnblogs.com/send/peida">
+联系</a></li>
+<li>
+<a id="blog_nav_rss" class="menu" href="https://www.cnblogs.com/peida/rss/">
+订阅</a>
+<!--<partial name="./Shared/_XmlLink.cshtml" model="Model" /></li>--></li>
+<li>
+<a id="blog_nav_admin" class="menu" href="https://i.cnblogs.com/">
+管理</a>
+</li>
+</ul>
+
+
+		<div class="blogStats">
+			
+			<span id="stats_post_count">随笔 - 
+223&nbsp; </span>
+<span id="stats_article_count">文章 - 
+2&nbsp; </span>
+<span id="stats-comment_count">评论 - 
+847</span>
+
+			
+		</div><!--end: blogStats -->
+	</div><!--end: navigator 博客导航栏 -->
+</div><!--end: header 头部 -->
+
+<div id="main">
+	<div id="mainContent">
+	<div class="forFlow">
+		<div id="post_detail">
+    <!--done-->
+    <div id="topics">
+        <div class="post">
+            <h1 class = "postTitle">
+                
+<a id="cb_post_title_url" class="postTitle2" href="https://www.cnblogs.com/peida/archive/2012/12/18/2822758.html">每天一个linux命令（40）：wc命令</a>
+
+            </h1>
+            <div class="clear"></div>
+            <div class="postBody">
+                
+<div id="cnblogs_post_body" class="blogpost-body ">
+    <p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-size:10.5000pt; font-family:'宋体'; ">Linux系统中的wc</span><span style="text-indent: 21pt;">(Word Count)</span><span style="font-family: 宋体; font-size: 10.5pt; text-indent: 21pt;">命令的功能为统计指定文件中的字节数、字数、行数，并将统计结果显示输出。</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-weight:bold; font-size:10.5000pt; font-family:'Times New Roman'; ">1．</span><span style="mso-spacerun:'yes'; font-weight:bold; font-size:10.5000pt; font-family:'宋体'; ">命令格式：</span></p><p style="margin-left:21.0000pt; text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-size:10.5000pt; font-family:'宋体'; ">wc&nbsp;[选项]文件...</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-weight:bold; font-size:10.5000pt; font-family:'Times New Roman'; ">2．</span><span style="mso-spacerun:'yes'; font-weight:bold; font-size:10.5000pt; font-family:'宋体'; ">命令功能：</span></p><p style="margin-left:21.0000pt; text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-size:10.5000pt; font-family:'宋体'; ">统计指定文件中的字节数、字数、行数，并将统计结果显示输出。该命令统计指定文件中的字节数、字数、行数。如果没有给出文件名，则从标准输入读取。wc同时也给出所指定文件的总统计数。</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-weight:bold; font-size:10.5000pt; font-family:'Times New Roman'; ">3．</span><span style="mso-spacerun:'yes'; font-weight:bold; font-size:10.5000pt; font-family:'宋体'; ">命令参数：</span></p><p style="margin-left:21.0000pt; text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-size:10.5000pt; font-family:'宋体'; ">-c&nbsp;统计字节数。</span></p><p style="margin-left:21.0000pt; text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-size:10.5000pt; font-family:'宋体'; ">-l&nbsp;统计行数。</span></p><p style="margin-left:21.0000pt; text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-size:10.5000pt; font-family:'宋体'; ">-m&nbsp;统计字符数。这个标志不能与&nbsp;-c&nbsp;标志一起使用。</span></p><p style="margin-left:21.0000pt; text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-size:10.5000pt; font-family:'宋体'; ">-w&nbsp;统计字数。一个字被定义为由空白、跳格或换行字符分隔的字符串。</span></p><p style="margin-left:21.0000pt; text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-size:10.5000pt; font-family:'宋体'; ">-L&nbsp;打印最长行的长度。</span></p><p style="margin-left:21.0000pt; text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-size:10.5000pt; font-family:'宋体'; ">-help&nbsp;显示帮助信息</span></p><p style="margin-left:21.0000pt; text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-size:10.5000pt; font-family:'宋体'; ">--version&nbsp;显示版本信息</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-weight:bold; font-size:10.5000pt; font-family:'Times New Roman'; ">4．</span><span style="mso-spacerun:'yes'; font-weight:bold; font-size:10.5000pt; font-family:'宋体'; ">使用实例：</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-weight:bold; font-size:10.5000pt; font-family:'宋体'; ">实例1：查看文件的字节数、字数、行数</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-weight:bold; font-size:10.5000pt; font-family:'宋体'; ">命令：</span></p><p style="margin-left:21.0000pt; text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-size:10.5000pt; font-family:'Times New Roman'; ">wc&nbsp;test.txt</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-weight:bold; font-size:10.5000pt; font-family:'宋体'; ">输出：</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">[root@localhost&nbsp;test]</span><span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">#</span>&nbsp;<span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">cat&nbsp;test.txt&nbsp;</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">hnlinux</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">peida.cnblogs.com</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">ubuntu</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">ubuntu&nbsp;linux</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">redhat</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">Redhat</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">linuxmint</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">[root</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">@localhost&nbsp;test]</span><span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">#</span>&nbsp;<span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">wc&nbsp;test.txt</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">&nbsp;7&nbsp;&nbsp;8&nbsp;70&nbsp;</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">test.txt</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">[root</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">@localhost&nbsp;test]</span><span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">#</span>&nbsp;<span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">wc&nbsp;-l&nbsp;test.txt&nbsp;</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">7&nbsp;</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">test.txt</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">[root</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">@localhost&nbsp;test]</span><span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">#</span>&nbsp;<span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">wc&nbsp;-c&nbsp;test.txt&nbsp;</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">70&nbsp;</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">test.txt</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">[root</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">@localhost&nbsp;test]</span><span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">#</span>&nbsp;<span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">wc&nbsp;-w&nbsp;test.txt&nbsp;</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">8&nbsp;</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">test.txt</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">[root</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">@localhost&nbsp;test]</span><span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">#</span>&nbsp;<span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">wc&nbsp;-m&nbsp;test.txt&nbsp;</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">70&nbsp;</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">test.txt</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">[root</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">@localhost&nbsp;test]</span><span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">#</span>&nbsp;<span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">wc&nbsp;-L&nbsp;test.txt&nbsp;</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">17&nbsp;test.txt</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-weight:bold; font-size:10.5000pt; font-family:'宋体'; ">说明：</span></p><p style="margin-left:21.0000pt; text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-size:10.5000pt; font-family:'宋体'; ">7&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;8&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;70&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;test.txt</span></p><p style="margin-left:21.0000pt; text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-size:10.5000pt; font-family:'宋体'; ">行数&nbsp;单词数&nbsp;字节数&nbsp;文件名</span></p><p style="margin-bottom:0pt; margin-top:0pt; "></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-weight:bold; font-size:10.5000pt; font-family:'宋体'; ">实例2：用wc命令怎么做到只打印统计数字不打印文件名</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-weight:bold; font-size:10.5000pt; font-family:'宋体'; ">命令：</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-weight:bold; font-size:10.5000pt; font-family:'宋体'; ">输出：</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">[root@localhost&nbsp;test]</span><span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">#</span>&nbsp;<span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">wc&nbsp;-l&nbsp;test.txt&nbsp;</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">7&nbsp;</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">test.txt</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">[root</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">@localhost&nbsp;test]</span><span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">#</span>&nbsp;<span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">cat&nbsp;test.txt&nbsp;|wc&nbsp;-l</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">7</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">[root</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">@localhost&nbsp;test]</span><span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">#</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-weight:bold; font-size:10.5000pt; font-family:'宋体'; ">说明：</span></p><p style="margin-left:21.0000pt; text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-size:10.5000pt; font-family:'宋体'; ">使用管道线，这在编写shell脚本时特别有用。</span></p><p style="margin-left:21.0000pt; text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-weight:bold; font-size:10.5000pt; font-family:'宋体'; ">实例3：</span><span style="mso-spacerun:'yes'; font-weight:bold; font-size:10.5000pt; font-family:'Times New Roman'; ">用来统计当前目录下的文件数</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-weight:bold; font-size:10.5000pt; font-family:'宋体'; ">命令：</span></p><p style="margin-left:21.0000pt; text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-size:10.5000pt; font-family:'Times New Roman'; ">ls&nbsp;-l&nbsp;|&nbsp;wc&nbsp;-l</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-weight:bold; font-size:10.5000pt; font-family:'宋体'; ">输出：</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">[root@localhost&nbsp;test]</span><span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">#</span>&nbsp;<span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">cd&nbsp;test6</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">[root@localhost&nbsp;test6]</span><span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">#</span>&nbsp;<span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">ll</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">总计&nbsp;604</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">---xr--r--&nbsp;1&nbsp;root&nbsp;mail&nbsp;&nbsp;302108&nbsp;11-30&nbsp;08:39&nbsp;</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">linklog.log</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">---xr--r--&nbsp;1&nbsp;mail&nbsp;users&nbsp;302108&nbsp;11-30&nbsp;08:39&nbsp;</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">log2012.log</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">-rw-r--r--&nbsp;1&nbsp;mail&nbsp;users&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;61&nbsp;11-30&nbsp;08:39&nbsp;</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">log2013.log</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">-rw-r--r--&nbsp;1&nbsp;root&nbsp;mail&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;0&nbsp;11-30&nbsp;08:39&nbsp;</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">log2014.log</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">-rw-r--r--&nbsp;1&nbsp;root&nbsp;mail&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;0&nbsp;11-30&nbsp;08:39&nbsp;</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">log2015.log</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">-rw-r--r--&nbsp;1&nbsp;root&nbsp;mail&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;0&nbsp;11-30&nbsp;08:39&nbsp;</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">log2016.log</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">-rw-r--r--&nbsp;1&nbsp;root&nbsp;mail&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;0&nbsp;11-30&nbsp;08:39&nbsp;</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">log2017.log</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">[root</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">@localhost&nbsp;test6]</span><span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">#</span>&nbsp;<span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">ls&nbsp;-l&nbsp;|&nbsp;wc&nbsp;-l</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">8</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; text-autospace:ideograph-other; background:#f5f5f5; "><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">[root</span><span style="font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">@localhost&nbsp;test6]</span><span style="color: #008000; font-size: 9pt; font-family: 'Courier New'; background-position: initial initial; background-repeat: initial initial;">#</span></p><p style="text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-weight:bold; font-size:10.5000pt; font-family:'宋体'; ">说明：</span></p><p style="margin-left:21.0000pt; text-indent:21.0000pt; margin-bottom:0pt; margin-top:0pt; "><span style="mso-spacerun:'yes'; font-size:10.5000pt; font-family:'宋体'; ">数量中包含当前目录</span></p>
+</div>
+<div id="MySignature"></div>
+<div class="clear"></div>
+<div id="blog_post_info_block">
+    <div id="blog_post_info"></div>
+    <div class="clear"></div>
+    <div id="post_next_prev"></div>
+</div>
+            </div>
+            <div class="postDesc">posted @ 
+<span id="post-date">2012-12-18 09:53</span>&nbsp;
+<a href="https://www.cnblogs.com/peida/">peida</a>&nbsp;
+阅读(<span id="post_view_count">...</span>)&nbsp;
+评论(<span id="post_comment_count">...</span>)&nbsp;
+<a href="https://i.cnblogs.com/EditPosts.aspx?postid=2822758" rel="nofollow">编辑</a>&nbsp;
+<a href="javascript:void(0)" onclick="AddToWz(2822758);return false;">收藏</a></div>
+        </div>
+	    
+	    
+    </div><!--end: topics 文章、评论容器-->
+</div>
+<script src="https://common.cnblogs.com/highlight/9.12.0/highlight.min.js"></script>
+<script>markdown_highlight();</script>
+<script>
+    var allowComments = true, cb_blogId = 38044, cb_blogApp = 'peida', cb_blogUserGuid = '0f3e420b-63cf-dd11-9e4d-001cf0cd104b';
+    var cb_entryId = 2822758, cb_entryCreatedDate = '2012-12-18 09:53', cb_postType = 1; 
+    loadViewCount(cb_entryId);
+</script><a name="!comments"></a>
+<div id="blog-comments-placeholder"></div>
+<script>
+    var commentManager = new blogCommentManager();
+    commentManager.renderComments(0);
+</script>
+
+<div id="comment_form" class="commentform">
+    <a name="commentform"></a>
+    <div id="divCommentShow"></div>
+    <div id="comment_nav"><span id="span_refresh_tips"></span><a href="javascript:void(0);" onclick="return RefreshCommentList();" id="lnk_RefreshComments" runat="server" clientidmode="Static">刷新评论</a><a href="#" onclick="return RefreshPage();">刷新页面</a><a href="#top">返回顶部</a></div>
+    <div id="comment_form_container"></div>
+    <div class="ad_text_commentbox" id="ad_text_under_commentbox"></div>
+    <div id="ad_t2"></div>
+    <div id="opt_under_post"></div>
+    <script async="async" src="https://www.googletagservices.com/tag/js/gpt.js"></script>
+    <script>
+        var googletag = googletag || {};
+        googletag.cmd = googletag.cmd || [];
+    </script>
+    <script>
+        googletag.cmd.push(function () {
+            googletag.defineSlot("/1090369/C1", [300, 250], "div-gpt-ad-1546353474406-0").addService(googletag.pubads());
+            googletag.defineSlot("/1090369/C2", [468, 60], "div-gpt-ad-1539008685004-0").addService(googletag.pubads());
+            googletag.pubads().enableSingleRequest();
+            googletag.enableServices();
+        });
+    </script>
+    <div id="cnblogs_c1" class="c_ad_block">
+        <div id="div-gpt-ad-1546353474406-0" style="height:250px; width:300px;"></div>
+    </div>
+    <div id="under_post_news"></div>
+    <div id="cnblogs_c2" class="c_ad_block">
+        <div id="div-gpt-ad-1539008685004-0" style="height:60px; width:468px;">
+            <script>
+                if (new Date() >= new Date(2018, 9, 13)) {
+                    googletag.cmd.push(function () { googletag.display("div-gpt-ad-1539008685004-0"); });
+                }
+            </script>
+        </div>
+    </div>
+    <div id="under_post_kb"></div>
+    <div id="HistoryToday" class="c_ad_block"></div>
+    <script type="text/javascript">
+        fixPostBody();
+        setTimeout(function () { incrementViewCount(cb_entryId); }, 50);
+        deliverAdT2();
+        deliverAdC1();
+        deliverAdC2();
+        loadNewsAndKb();
+        loadBlogSignature();
+LoadPostCategoriesTags(cb_blogId, cb_entryId);        LoadPostInfoBlock(cb_blogId, cb_entryId, cb_blogApp, cb_blogUserGuid);
+        GetPrevNextPost(cb_entryId, cb_blogId, cb_entryCreatedDate, cb_postType);
+        loadOptUnderPost();
+        GetHistoryToday(cb_blogId, cb_blogApp, cb_entryCreatedDate);
+    </script>
+</div>
+	</div><!--end: forFlow -->
+	</div><!--end: mainContent 主体内容容器-->
+
+	<div id="sideBar">
+		<div id="sideBarMain">
+			
+<div id="sidebar_news" class="newsItem">
+            <script>loadBlogNews();</script>
+</div>
+
+			<div id="blog-calendar" style="display:none"></div><script>loadBlogDefaultCalendar();</script>
+			
+			<div id="leftcontentcontainer">
+				<div id="blog-sidecolumn"></div>
+                    <script>loadBlogSideColumn();</script>
+			</div>
+			
+		</div><!--end: sideBarMain -->
+	</div><!--end: sideBar 侧边栏容器 -->
+	<div class="clear"></div>
+	</div><!--end: main -->
+	<div class="clear"></div>
+	<div id="footer">
+		<!--done-->
+Copyright &copy; 2020 peida
+<br /><span id="poweredby">Powered by .NET Core 3.1.0 on Linux</span>
+
+
+
+	</div><!--end: footer -->
+</div><!--end: home 自定义的最大容器 -->
+
+
+    <div id="page_end_html">
+        <script language="javascript" type="text/javascript" src="http://js.users.noscript.cnitblog.com/1910329.js" defer></script>
+<noscript><a href="http://www.noscript.cnitblog.com/?1910329" target="_blank"><img alt="&#x6211;&#x8981;&#x5566;&#x514D;&#x8D39;&#x7EDF;&#x8BA1;" src="http://img.users.noscript.cnitblog.com/1910329.asp" style="border:none" />统计代码</a></noscript>
+
+<script src="https://s137.cnzz.com/stat.php?id=1121896&web_id=1121896" language="JavaScript" charset="gb2312" defer></script>
+
+<script src="https://s14.cnzz.com/stat.php?id=943648&web_id=943648&online=1&show=line" language="JavaScript" defer></script>
+    </div>
+</body>
+</html>
