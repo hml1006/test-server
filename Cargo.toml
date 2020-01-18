@@ -17,8 +17,8 @@ chrono = "0.4.10"
 lazy_static = "1.4.0"
 yaml-rust = "0.4.3"
 shellexpand = "1.1.1"
-tokio = { version = "0.2", features = ["full"] }
+tokio = { version = "0.2.9", features = ["full"] }
 thread-id = "3.3.0"
-dashmap = "2.1.1"
+dashmap = "3.2.0"
 itertools = "0.8.2"
 console = "0.9.1"
