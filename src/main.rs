@@ -7,6 +7,7 @@ extern crate hyper;
 extern crate tokio;
 extern crate yaml_rust;
 extern crate chrono;
+extern crate netstat;
 
 mod types;
 
@@ -38,6 +39,8 @@ use thread_id;
 use yaml_rust::yaml::Yaml::{Array, Hash};
 use yaml_rust::{Yaml, YamlLoader};
 use chrono::prelude::*;
+use netstat::*;
+use std::process;
 
 use crate::types::mime_types::MimeType;
 use crate::types::route::{Content, RouteInfo};
@@ -61,6 +64,9 @@ const MAX_FILE_CACHE_LENGTH: u64 = 512 * 1024;
 
 // default statistics information refresh time
 const DEFAULT_STATS_REFRESH_INTERVAL: u64 = 1;
+
+//default listen port
+const DEFAULT_LISTEN_PORT: u16 = 8088;
 
 lazy_static! {
     //parameters from command line
@@ -192,6 +198,25 @@ fn get_response_statistic() -> Box<HashMap<u16, u64>> {
     statistic
 }
 
+/// get all connections by listening port
+fn get_connections_info_by_listen_port(listen_port: u16) -> Result<Vec<SocketInfo>, Error> {
+    let af_flags = AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6;
+    let proto_flags = ProtocolFlags::TCP;
+    let sockets_info = get_sockets_info(af_flags, proto_flags)?;
+    let process_id = process::id();
+    let sockets_info = sockets_info.into_iter()
+        .filter(|si| {
+            match &si.protocol_socket_info {
+                ProtocolSocketInfo::Tcp(tcp_si) => {
+                    tcp_si.local_port == listen_port && si.associated_pids.contains(&process_id)
+                }
+                _ => false
+            }
+        })
+        .collect::<Vec<SocketInfo>>();
+    Ok(sockets_info)
+}
+
 async fn response(req: Request<Body>) -> Result<Response<Body>, Infallible> {
     let url = req.uri().path().to_string();
     let thread_id: usize = thread_id::get();
@@ -268,6 +293,59 @@ fn write_term(term: &Term, msg: &str, term_line_num: usize) -> usize {
     }
 }
 
+fn get_netstat_info() -> (usize, usize, usize) {
+    let listen_port = CONFIGURATION.get(KEY_PORT).unwrap().value().parse::<u16>().unwrap_or(DEFAULT_LISTEN_PORT);
+    let sockets_info = match get_connections_info_by_listen_port(listen_port) {
+        Ok(sockets_info) => sockets_info,
+        Err(e) => {
+            println!("Error: get sockets info failed: {:?}", e);
+            Vec::new()
+        }
+    };
+
+    // syn-recvd
+    let connecting_num = sockets_info.iter().filter(|si| {
+        match &si.protocol_socket_info {
+            ProtocolSocketInfo::Tcp(tcp_si) => {
+                match tcp_si.state {
+                    TcpState::SynReceived => true,
+                    _ => false
+                }
+            }
+            _ => false
+        }
+    }).count();
+
+    // is closing
+    let closing_num = sockets_info.iter().filter(|si| {
+        match &si.protocol_socket_info {
+            ProtocolSocketInfo::Tcp(tcp_si) => {
+                match tcp_si.state {
+                    TcpState::FinWait1 | TcpState::FinWait2 | TcpState::CloseWait | TcpState::Closing |
+                    TcpState::LastAck | TcpState::TimeWait => true,
+                    _ => false
+                }
+            }
+            _ => false
+        }
+    }).count();
+
+    // established
+    let established_num = sockets_info.iter().filter(|si| {
+        match &si.protocol_socket_info {
+            ProtocolSocketInfo::Tcp(tcp_si) => {
+                match tcp_si.state {
+                    TcpState::Established => true,
+                    _ => false
+                }
+            }
+            _ => false
+        }
+    }).count();
+
+    (connecting_num, closing_num, established_num)
+}
+
 /// create statistics thread
 fn create_stat_thread() {
     thread::spawn(move || {
@@ -288,6 +366,8 @@ fn create_stat_thread() {
             );
             thread::sleep(durection);
 
+            let (connecting, closing, established) = get_netstat_info();
+
             // clear termimal output
             match term.clear_last_lines(term_line_num) {
                 Ok(_) => {
@@ -298,7 +378,22 @@ fn create_stat_thread() {
                         style("***************").bold().cyan()), term_line_num.clone());
                     term_line_num = write_term(
                         &term,
-                        &format!("[{}] {}", style("Connections").bold().italic().yellow().bg(Color::Black), style(get_total_connections()).bg(Color::Black).white().bold()),
+                        &format!("[{}] {}", style("Connections from start").bold().italic().yellow().bg(Color::Black), style(get_total_connections()).bg(Color::Black).white().bold()),
+                        term_line_num.clone(),
+                    );
+                    term_line_num = write_term(
+                        &term,
+                        &format!("[{}] {}", style("Connecting").bold().italic().yellow().bg(Color::Black), style(connecting).bg(Color::Black).white().bold()),
+                        term_line_num.clone(),
+                    );
+                    term_line_num = write_term(
+                        &term,
+                        &format!("[{}] {}", style("Closing").bold().italic().yellow().bg(Color::Black), style(closing).bg(Color::Black).white().bold()),
+                        term_line_num.clone(),
+                    );
+                    term_line_num = write_term(
+                        &term,
+                        &format!("[{}] {}", style("Established").bold().italic().yellow().bg(Color::Black), style(established).bg(Color::Black).white().bold()),
                         term_line_num.clone(),
                     );
                     term_line_num =
@@ -354,7 +449,7 @@ fn parse_args() -> std::result::Result<(), Box<dyn std::error::Error>> {
     CONFIGURATION.insert(KEY_IP, ip_str.to_string());
 
     // parse or set defalut port number
-    let port = match matches.value_of("port").unwrap_or("8088").parse::<u16>() {
+    let port = match matches.value_of("port").unwrap_or(&DEFAULT_LISTEN_PORT.to_string()).parse::<u16>() {
         Ok(port) => port,
         Err(e) => {
             println!("parse port failed: {:?}", e);
